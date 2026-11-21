@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Superadmin | SI-CAKAP v2.0</title>
+  <meta name="description" content="Portal Superadmin SI-CAKAP v2.0 - Otorisasi & Persetujuan Pendaftaran Sekolah Baru, Manajemen Institusi Global." />
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Local Tailwind CSS Build -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Tailwind CSS CDN -->
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Impeccable LocalStorage Data Persistence Layer -->
+  <script src="/assets/js/sicakap-db.js"></script>
+  <script type="module" src="/src/services/data-store.js"></script>
+  <!-- Route Guard & RBAC Session Enforcement -->
+  <script type="module">
+    import { requireRole } from '/src/lib/guard.js';
+    requireRole(['superadmin']);
+  </script>
+
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans bg-slate-50 text-slate-900 antialiased overflow-hidden">
+
+  <!-- ================= TOP HEADER BAR ================= -->
+  <header class="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between z-30 shrink-0">
+    <!-- Left: Brand & Title -->
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-800 to-rose-700 flex items-center justify-center text-white shadow-md shadow-indigo-900/20">
+        <i data-lucide="shield-check" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-extrabold text-base tracking-tight text-slate-900">SI-CAKAP</span>
+          <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+            SUPERADMIN PUSAT
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-500 hidden sm:block">Otorisasi Institusi Sekolah & Manajemen Platform Global</p>
+      </div>
+    </div>
+
+    <!-- Center: Supabase Live Cloud Status Badge -->
+    <div id="superadmin-persistence-bar" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs">
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span>🟢 Supabase Live Cloud</span>
+    </div>
+
+    <!-- Right: Profile & Logout -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5 pl-3 border-l border-slate-200">
+        <div id="superadmin-avatar" class="w-9 h-9 rounded-full bg-indigo-900 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+          SA
+        </div>
+        <div class="hidden xl:block text-left">
+          <p id="superadmin-name" class="text-xs font-bold text-slate-900 leading-tight">Superadmin Global</p>
+          <p id="superadmin-email" class="text-[10px] text-slate-500 font-mono">superadmin@sicakap.id</p>
+        </div>
+        <button type="button" id="btn-superadmin-logout" class="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer" title="Logout Sesi Superadmin">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN DASHBOARD BODY ================= -->
+  <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- Top Banner & Quick Stats -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-extrabold text-slate-900">Manajemen Institusi Sekolah & Approval</h1>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1">
+          Otorisasi pendaftaran institusi pendidikan terintegrasi penuh ke database Supabase Cloud.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="loadSuperadminData()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-indigo-600"></i>
+          <span>Segarkan Data</span>
+        </button>
+        <button onclick="openAddSchoolModal()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer">
+          <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+          <span>+ Tambah Sekolah Baru</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 4 Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-amber-600 uppercase">Menunggu Approval</span>
+          <i data-lucide="clock" class="w-5 h-5 text-amber-500"></i>
+        </div>
+        <p class="text-3xl font-extrabold text-amber-500" id="stat-pending">0</p>
+        <p class="text-[11px] text-slate-500 font-medium">Sekolah status non-aktif/pending</p>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-emerald-600 uppercase">Sekolah Disetujui</span>
+          <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500"></i>
+        </div>
+        <p class="text-3xl font-extrabold text-emerald-600" id="stat-approved">0</p>
+        <p class="text-[11px] text-slate-500 font-medium">Akun Admin Sekolah aktif</p>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-indigo-600 uppercase">Total Institusi</span>
+          <i data-lucide="building-2" class="w-5 h-5 text-indigo-500"></i>
+        </div>
+        <p class="text-3xl font-extrabold text-indigo-900" id="stat-total-schools">0</p>
+        <p class="text-[11px] text-slate-500 font-medium">Terdaftar di public.schools</p>
+      </div>
+
+      <div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-sky-600 uppercase">Total Siswa Terdaftar</span>
+          <i data-lucide="users" class="w-5 h-5 text-sky-500"></i>
+        </div>
+        <p class="text-3xl font-extrabold text-sky-700" id="stat-students">0</p>
+        <p class="text-[11px] text-slate-500 font-medium">Profil siswa di public.profiles</p>
+      </div>
+    </div>
+
+    <!-- ================= DAFTAR PENGAJUAN SEKOLAH (MAIN FEATURE) ================= -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden space-y-4">
+      <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900">Daftar Sekolah & Status Approval (Live Supabase)</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Kelola status aktif/non-aktif sekolah langsung ke database cloud</p>
+        </div>
+
+        <!-- Filter Tab Buttons -->
+        <div class="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
+          <button onclick="filterApprovalTable('all')" id="f-all" class="px-3 py-1.5 rounded-lg bg-white text-indigo-900 shadow-xs cursor-pointer">
+            Semua (<span id="count-all">0</span>)
+          </button>
+          <button onclick="filterApprovalTable('pending')" id="f-pending" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 cursor-pointer">
+            Menunggu (<span id="count-pending">0</span>)
+          </button>
+          <button onclick="filterApprovalTable('approved')" id="f-approved" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 cursor-pointer">
+            Disetujui (<span id="count-approved">0</span>)
+          </button>
+        </div>
+      </div>
+
+      <!-- Submissions Table Container -->
+      <div class="overflow-x-auto px-5 pb-5">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 text-slate-500 font-extrabold uppercase border-b border-slate-200">
+            <tr>
+              <th class="py-3.5 px-4">Nama Sekolah & Jenjang</th>
+              <th class="py-3.5 px-4 font-mono">NPSN</th>
+              <th class="py-3.5 px-4">Kabupaten / Kota</th>
+              <th class="py-3.5 px-4 text-center">Tanggal Dibuat</th>
+              <th class="py-3.5 px-4 text-center">Status Akses</th>
+              <th class="py-3.5 px-4 text-center">Tindakan Superadmin</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="submissions-tbody">
+            <tr>
+              <td colspan="6" class="text-center py-8 text-slate-400 font-semibold">
+                Memuat data sekolah dari Supabase...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ================= DAFTAR SEKOLAH RESMI AKTIF ================= -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-900">Institusi Sekolah Terdaftar & Berjalan (Aktif)</h3>
+          <p class="text-xs text-slate-500">Sekolah yang telah disetujui memiliki akses ke panel Admin Sekolah masing-masing</p>
+        </div>
+        <span id="active-schools-badge" class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
+          0 Sekolah Terverifikasi
+        </span>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 text-xs" id="active-schools-grid">
+        <!-- Dynamically populated from Supabase public.schools -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= MODAL TAMBAH SEKOLAH BARU ================= -->
+  <div id="modal-add-school" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+            <i data-lucide="school" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-slate-900">Tambah Sekolah Baru</h3>
+            <p class="text-[11px] text-slate-500">Daftarkan institusi langsung ke Supabase</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeAddSchoolModal()" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleCreateSchool(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nama Resmi Sekolah</label>
+          <input type="text" id="add-school-name" required placeholder="Contoh: SDN Contoh 01"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">NPSN (8 Digit)</label>
+            <input type="text" id="add-school-npsn" required maxlength="16" placeholder="12345678"
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-black text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Jenjang</label>
+            <select id="add-school-jenjang" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500">
+              <option value="SD" selected>SD</option>
+              <option value="MI">MI</option>
+              <option value="SMP">SMP</option>
+              <option value="MTs">MTs</option>
+              <option value="SMA">SMA</option>
+              <option value="SMK">SMK</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Kabupaten / Kota</label>
+          <input type="text" id="add-school-kabupaten" placeholder="Contoh: Jakarta Pusat"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" />
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+          <input type="checkbox" id="add-school-active" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500" />
+          <label for="add-school-active" class="text-xs font-bold text-slate-700">Langsung Aktifkan Akses Sekolah</label>
+        </div>
+
+        <div class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeAddSchoolModal()" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer">
+            Batal
+          </button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition cursor-pointer">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>Simpan Sekolah</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 translate-y-20 opacity-0">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+    <span id="toast-message">Operasi berhasil!</span>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC SUPERADMIN (SUPABASE LIVE CLOUD) -->
+  <script type="module">
+    import { supabase, getCurrentUserProfile, signOutAndRedirect } from '/src/lib/supabase.js';
+
+    let schoolsData = [];
+    let currentFilter = 'all';
+
+    // Show Toast Notification
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const text = document.getElementById('toast-message');
+      if (text) text.textContent = msg;
+      if (toast) {
+        toast.classList.remove('translate-y-20', 'opacity-0');
+        setTimeout(() => {
+          toast.classList.add('translate-y-20', 'opacity-0');
+        }, 3500);
+      }
+      lucide.createIcons();
+    }
+
+    // Modal Add School Controls
+    function openAddSchoolModal() {
+      const modal = document.getElementById('modal-add-school');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeAddSchoolModal() {
+      const modal = document.getElementById('modal-add-school');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    // Initialize User Info in Header
+    async function initUserInfo() {
+      try {
+        const session = await getCurrentUserProfile();
+        if (session) {
+          const { user, profile } = session;
+          const nameEl = document.getElementById('superadmin-name');
+          const emailEl = document.getElementById('superadmin-email');
+          const avatarEl = document.getElementById('superadmin-avatar');
+
+          if (nameEl) nameEl.textContent = profile.full_name || 'Superadmin Global';
+          if (emailEl) emailEl.textContent = user.email || 'superadmin@sicakap.id';
+          if (avatarEl) {
+            const initials = (profile.full_name || 'SA')
+              .split(' ')
+              .map(w => w[0])
+              .join('')
+              .substring(0, 2)
+              .toUpperCase();
+            avatarEl.textContent = initials || 'SA';
+          }
+        }
+      } catch (err) {
+        console.warn('[Superadmin] Error fetching profile:', err);
+      }
+    }
+
+    // Load Live Data from Supabase (schools & profiles)
+    async function loadSuperadminData() {
+      try {
+        const tbody = document.getElementById('submissions-tbody');
+        if (tbody) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" class="text-center py-8 text-slate-400 font-semibold">
+                <span class="inline-block animate-spin mr-2">⏳</span> Mengambil data terbaru dari Supabase...
+              </td>
+            </tr>
+          `;
+        }
+
+        // 1. Fetch all schools
+        const { data: schools, error: schoolsErr } = await supabase
+          .from('schools')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (schoolsErr) throw schoolsErr;
+        schoolsData = schools || [];
+
+        // 2. Fetch student count from profiles
+        const { count: studentCount, error: countErr } = await supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('role', 'siswa');
+
+        const totalStudents = countErr ? 0 : (studentCount || 0);
+
+        // 3. Update stats cards
+        const pendingCount = schoolsData.filter(s => !s.is_active).length;
+        const approvedCount = schoolsData.filter(s => s.is_active).length;
+
+        document.getElementById('stat-pending').textContent = pendingCount;
+        document.getElementById('stat-approved').textContent = approvedCount;
+        document.getElementById('stat-total-schools').textContent = schoolsData.length;
+        document.getElementById('stat-students').textContent = totalStudents.toLocaleString('id-ID');
+
+        document.getElementById('count-all').textContent = schoolsData.length;
+        document.getElementById('count-pending').textContent = pendingCount;
+        document.getElementById('count-approved').textContent = approvedCount;
+
+        renderSubmissionsTable();
+        renderActiveSchoolsGrid();
+      } catch (err) {
+        console.error('[Superadmin] Load data error:', err);
+        showToast(`❌ Gagal memuat data dari Supabase: ${err.message}`);
+      }
+    }
+
+    // Render Submissions & Schools Table
+    function renderSubmissionsTable() {
+      const tbody = document.getElementById('submissions-tbody');
+      if (!tbody) return;
+
+      const filtered = schoolsData.filter(item => {
+        if (currentFilter === 'pending') return !item.is_active;
+        if (currentFilter === 'approved') return item.is_active;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="text-center py-8 text-slate-400 font-semibold">
+              Tidak ada data sekolah pada kategori "${currentFilter.toUpperCase()}".
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(item => {
+        const isApproved = item.is_active;
+        const statusBadge = isApproved
+          ? `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">✓ Disetujui (Aktif)</span>`
+          : `<span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">Menunggu Approval</span>`;
+
+        const actionButtons = isApproved
+          ? `
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="toggleSchoolActive('${item.id}', true, '${item.name}')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
+                <i data-lucide="pause-circle" class="w-3.5 h-3.5"></i>
+                <span>Nonaktifkan</span>
+              </button>
+              <button onclick="deleteSchool('${item.id}', '${item.name}')" class="p-1.5 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Hapus Sekolah">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          `
+          : `
+            <div class="flex items-center justify-center gap-2">
+              <button onclick="toggleSchoolActive('${item.id}', false, '${item.name}')" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                <span>Setujui</span>
+              </button>
+              <button onclick="deleteSchool('${item.id}', '${item.name}')" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                <span>Tolak</span>
+              </button>
+            </div>
+          `;
+
+        const createdAtStr = item.created_at
+          ? new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '-';
+
+        return `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="py-3.5 px-4">
+              <p class="font-bold text-slate-900">${item.name}</p>
+              <p class="text-[11px] text-slate-400">Jenjang: ${item.jenjang || 'SD'}</p>
+            </td>
+            <td class="py-3.5 px-4 font-mono font-bold text-slate-800">
+              ${item.npsn}
+            </td>
+            <td class="py-3.5 px-4 text-slate-600 font-medium">
+              ${item.kabupaten || '-'}
+            </td>
+            <td class="py-3.5 px-4 text-center text-slate-500 text-[11px]">
+              ${createdAtStr}
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              ${statusBadge}
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              ${actionButtons}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // Render Active Schools Grid
+    function renderActiveSchoolsGrid() {
+      const container = document.getElementById('active-schools-grid');
+      const badge = document.getElementById('active-schools-badge');
+      if (!container) return;
+
+      const activeSchools = schoolsData.filter(s => s.is_active);
+      if (badge) badge.textContent = `${activeSchools.length} Sekolah Terverifikasi`;
+
+      if (activeSchools.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-6 text-slate-400 font-medium">
+            Belum ada sekolah aktif di database Supabase.
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = activeSchools.map(s => `
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 hover:border-indigo-200 transition">
+          <div class="flex items-center justify-between font-bold text-slate-900">
+            <span class="truncate">${s.name}</span>
+            <span class="text-emerald-600 shrink-0 text-xs">✓ Aktif</span>
+          </div>
+          <p class="text-slate-500">NPSN: <span class="font-mono font-semibold">${s.npsn}</span> • Jenjang ${s.jenjang || 'SD'}</p>
+          <p class="text-[11px] text-slate-400 truncate">Wilayah: ${s.kabupaten || 'Nasional'}</p>
+        </div>
+      `).join('');
+    }
+
+    // Toggle School Status (Setujui / Nonaktifkan)
+    async function toggleSchoolActive(schoolId, currentStatus, schoolName) {
+      const nextStatus = !currentStatus;
+      const actionLabel = nextStatus ? 'menyetujui' : 'menonaktifkan';
+
+      try {
+        const { error } = await supabase
+          .from('schools')
+          .update({ is_active: nextStatus })
+          .eq('id', schoolId);
+
+        if (error) throw error;
+
+        showToast(`Sekolah "${schoolName}" berhasil di-${nextStatus ? 'setujui (Aktif)' : 'nonaktifkan'}!`);
+        await loadSuperadminData();
+      } catch (err) {
+        showToast(`❌ Gagal ${actionLabel} sekolah: ${err.message}`);
+      }
+    }
+
+    // Delete School
+    async function deleteSchool(schoolId, schoolName) {
+      if (!confirm(`Apakah Anda yakin ingin menghapus institusi "${schoolName}" dari database? Data profil dan ujian terkait akan terhapus.`)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('schools')
+          .delete()
+          .eq('id', schoolId);
+
+        if (error) throw error;
+
+        showToast(`Sekolah "${schoolName}" telah dihapus.`);
+        await loadSuperadminData();
+      } catch (err) {
+        showToast(`❌ Gagal menghapus sekolah: ${err.message}`);
+      }
+    }
+
+    // Create New School (INSERT into public.schools)
+    async function handleCreateSchool(e) {
+      e.preventDefault();
+      const name = document.getElementById('add-school-name').value.trim();
+      const npsn = document.getElementById('add-school-npsn').value.trim();
+      const jenjang = document.getElementById('add-school-jenjang').value;
+      const kabupaten = document.getElementById('add-school-kabupaten').value.trim();
+      const isActive = document.getElementById('add-school-active').checked;
+
+      try {
+        const { error } = await supabase
+          .from('schools')
+          .insert([{ name, npsn, jenjang, kabupaten, is_active: isActive }]);
+
+        if (error) throw error;
+
+        closeAddSchoolModal();
+        document.getElementById('add-school-name').value = '';
+        document.getElementById('add-school-npsn').value = '';
+        document.getElementById('add-school-kabupaten').value = '';
+
+        showToast(`✅ Sekolah "${name}" (NPSN: ${npsn}) berhasil didaftarkan ke Supabase!`);
+        await loadSuperadminData();
+      } catch (err) {
+        showToast(`❌ Gagal mendaftarkan sekolah: ${err.message}`);
+      }
+    }
+
+    // Filter Table Handler
+    function filterApprovalTable(filter) {
+      currentFilter = filter;
+      ['all', 'pending', 'approved'].forEach(f => {
+        const btn = document.getElementById(`f-${f}`);
+        if (btn) {
+          if (f === filter) {
+            btn.className = 'px-3 py-1.5 rounded-lg bg-white text-indigo-900 font-bold shadow-xs cursor-pointer';
+          } else {
+            btn.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-semibold cursor-pointer';
+          }
+        }
+      });
+      renderSubmissionsTable();
+    }
+
+    // Expose handlers to global window scope for inline onclick/onsubmit
+    window.openAddSchoolModal = openAddSchoolModal;
+    window.closeAddSchoolModal = closeAddSchoolModal;
+    window.handleCreateSchool = handleCreateSchool;
+    window.toggleSchoolActive = toggleSchoolActive;
+    window.deleteSchool = deleteSchool;
+    window.filterApprovalTable = filterApprovalTable;
+    window.loadSuperadminData = loadSuperadminData;
+
+    // Initialization on DOMContentLoaded
+    window.addEventListener('DOMContentLoaded', async () => {
+      lucide.createIcons();
+
+      // Logout handler
+      document.getElementById('btn-superadmin-logout')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        await signOutAndRedirect('../index.html');
+      });
+
+      await initUserInfo();
+      await loadSuperadminData();
+    });
+  </script>
+</body>
+</html>

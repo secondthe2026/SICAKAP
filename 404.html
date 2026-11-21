@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404 - Halaman Tidak Ditemukan | SI-CAKAP SD</title>
+  <meta name="description" content="Halaman yang kamu cari tidak ditemukan di platform SI-CAKAP SD." />
+
+  <!-- Google Fonts: Nunito & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Nunito:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Local Tailwind CSS Build -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Central Persistence & Store -->
+  <script src="/assets/js/sicakap-db.js"></script>
+  <script type="module" src="/src/services/data-store.js"></script>
+</head>
+<body class="min-h-screen flex flex-col justify-between overflow-x-hidden bg-gradient-to-br from-sky-50 via-white to-amber-50/40 text-slate-800 antialiased font-sans relative selection:bg-sky-500 selection:text-white">
+
+  <!-- Soft EdTech Blobs -->
+  <div class="absolute -top-24 -left-24 w-80 sm:w-96 h-80 sm:h-96 bg-sky-200/40 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute top-1/3 -right-24 w-72 sm:w-96 h-72 sm:h-96 bg-emerald-200/30 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute -bottom-24 left-1/3 w-80 sm:w-96 h-80 sm:h-96 bg-amber-200/35 rounded-full blur-3xl pointer-events-none"></div>
+
+  <!-- Header Mini -->
+  <header class="pt-4 px-4 sm:px-6 max-w-5xl mx-auto w-full shrink-0 z-10">
+    <div class="flex items-center justify-between py-2">
+      <a href="/index.html" class="flex items-center gap-2.5 group">
+        <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-sky-500 via-sky-600 to-blue-600 flex items-center justify-center text-white shadow-md shadow-sky-500/25 group-hover:scale-105 transition-transform">
+          <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-black text-lg tracking-tight text-slate-800">
+            SI-CAKAP <span class="text-sky-600">SD</span>
+          </span>
+          <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200">
+            <span>✨</span> Ceria
+          </span>
+        </div>
+      </a>
+      <a href="/index.html" class="text-xs font-bold text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-full border border-sky-200 transition flex items-center gap-1.5">
+        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        <span>Beranda</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- 404 Content Card -->
+  <main class="flex-1 flex items-center justify-center px-4 py-8 max-w-xl mx-auto w-full z-10 text-center">
+    <div class="bg-white/95 backdrop-blur-md rounded-3xl p-6 sm:p-8 shadow-2xl shadow-sky-100/80 border-2 border-sky-200 ring-4 ring-sky-50 space-y-5">
+      
+      <!-- Badge Ceria -->
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black">
+        <span class="animate-bounce">🧭</span>
+        <span>Oops! Jalur Ini Belum Ditemukan</span>
+      </div>
+
+      <!-- Playful 404 Display -->
+      <div class="relative py-2">
+        <div class="text-6xl sm:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-sky-500 via-emerald-500 to-amber-500 font-mono">
+          404
+        </div>
+        <div class="text-2xl mt-1">🎈🎒🔍</div>
+      </div>
+
+      <!-- Description -->
+      <div class="space-y-1.5">
+        <h1 class="text-lg sm:text-xl font-black text-slate-900">
+          Waduh, Halamannya Tidak Ditemukan!
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed">
+          Jangan panik ya! Kemungkinan alamat tautan salah ketik atau halaman sudah dipindahkan ke tempat yang baru.
+        </p>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/index.html" class="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs sm:text-sm shadow-md shadow-sky-500/25 flex items-center justify-center gap-2 transition transform active:scale-95">
+          <i data-lucide="home" class="w-4 h-4"></i>
+          <span>Kembali ke Beranda</span>
+        </a>
+        <a href="/pages/exam-room.html" class="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition transform active:scale-95">
+          <i data-lucide="ticket" class="w-4 h-4 text-amber-600"></i>
+          <span>Masuk Ruang Ujian</span>
+        </a>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer Mini -->
+  <footer class="shrink-0 py-3 px-4 text-center text-xs text-slate-500 border-t border-sky-100 z-10">
+    <p class="font-bold">© 2026 SI-CAKAP SD • Platform Asesmen Ramah Anak</p>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
+

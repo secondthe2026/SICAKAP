@@ -1,0 +1,14 @@
+si-cakap-web/
+├── index.html              # Halaman Utama (Hero Section & Portal Login RBAC Cepat)
+├── PRD.md                  # Dokumen Kebutuhan Produk (PRD v2.0)
+├── desain.md               # Panduan Sistem Desain UI/UX & Palet Warna
+├── blueprint-landing.txt   # Cetak Biru Arsitektur Multi-Page Web
+└── pages/
+    ├── fitur.html          # Halaman Fitur Unggulan, Anti-Curang & Auto-Save
+    ├── kompatibilitas.html # Halaman Simulasi Chromebook, HP, & Laptop
+    ├── rbac.html           # Halaman Matriks Hak Akses RBAC 4 Peran
+    ├── alur.html           # Halaman 4 Tahap Asesmen & SOP Pengujian
+    ├── exam-room.html      # Ruang Ujian CBT Siswa (Lockdown & Timer)
+    ├── admin-dashboard.html# Dashboard Command Center Super Admin
+    ├── guru-dashboard.html # Ruang Kerja Guru Mapel (Bank Soal & Nilai)
+    └── proktor-dashboard.html# Panel Pengawas Ruang (Token & Monitoring)

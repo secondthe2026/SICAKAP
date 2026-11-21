@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Pengawas Ruang (Proktor) | SI-CAKAP v2.0</title>
+  <meta name="description" content="Dashboard Pengawas Ruang Ujian SI-CAKAP v2.0 - Generator Token Dinamis, Live Monitoring Siswa, Buka Kunci Pindah Tab, & Reset Sesi." />
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Local Tailwind CSS Build -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Tailwind CSS CDN -->
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+  <!-- Central Persistence & Store -->
+  <script src="/assets/js/sicakap-db.js"></script>
+  <script type="module" src="/src/services/data-store.js"></script>
+  <!-- Route Guard & RBAC Session Enforcement -->
+  <script type="module">
+    import { requireRole } from '/src/lib/guard.js';
+    requireRole(['proktor', 'admin_sekolah', 'superadmin']);
+  </script>
+  <!-- Proctor Service & Realtime Integration -->
+  <script type="module">
+    import { supabase, getCurrentUserProfile, signOutAndRedirect } from '/src/lib/supabase.js';
+    import {
+      fetchProctorMonitor,
+      subscribeProctorRealtime,
+      generateExamToken,
+      resetStudentLogin,
+      addExtraTime,
+      forceSubmitStudent
+    } from '/src/services/proctor-service.js';
+
+    window.supabase = supabase;
+    window.getCurrentUserProfile = getCurrentUserProfile;
+    window.signOutAndRedirect = signOutAndRedirect;
+    window.fetchProctorMonitor = fetchProctorMonitor;
+    window.subscribeProctorRealtime = subscribeProctorRealtime;
+    window.generateExamToken = generateExamToken;
+    window.resetStudentLogin = resetStudentLogin;
+    window.addExtraTime = addExtraTime;
+    window.forceSubmitStudent = forceSubmitStudent;
+
+    // Hydrate live proctor profile from Supabase Auth
+    (async () => {
+      try {
+        const session = await getCurrentUserProfile();
+        if (session?.profile) {
+          const p = session.profile;
+          const nameEl = document.getElementById('proktor-header-name');
+          const emailEl = document.getElementById('proktor-header-email');
+          const avatarEl = document.getElementById('proktor-avatar-initials');
+          if (nameEl) nameEl.textContent = p.full_name || 'Pengawas Ruang Ujian';
+          if (emailEl) emailEl.textContent = session.user?.email || `ID: ${p.identifier || 'PROKTOR'}`;
+          if (avatarEl) {
+            const initials = (p.full_name || 'PR')
+              .split(' ')
+              .map(w => w[0])
+              .join('')
+              .substring(0, 2)
+              .toUpperCase();
+            avatarEl.textContent = initials || 'PR';
+          }
+        }
+      } catch (err) {
+        console.warn('[Proctor] Profile hydration error:', err);
+      }
+    })();
+  </script>
+</head>
+<body class="h-full flex flex-col font-sans bg-slate-50 text-slate-900 antialiased overflow-hidden">
+
+  <!-- ================= TOP HEADER BAR ================= -->
+  <header class="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between z-30 shrink-0">
+    <!-- Left: Brand & Room Identity -->
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-700 to-cakap-800 flex items-center justify-center text-white shadow-md shadow-purple-900/20">
+        <i data-lucide="monitor" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-extrabold text-base tracking-tight text-slate-900">SI-CAKAP</span>
+          <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+            PROKTOR RUANG
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-500 hidden sm:block">Pengawas Ruang: <strong>LAB-KOMP-01</strong> • Sesi 1 (Aktif)</p>
+      </div>
+    </div>
+
+    <!-- Center: Session & Subject Status -->
+    <div class="hidden md:flex items-center gap-3 text-xs font-semibold">
+      <span class="px-3 py-1.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 flex items-center gap-1.5">
+        <i data-lucide="map-pin" class="w-3.5 h-3.5 text-purple-600"></i>
+        <span>Ruang: <strong>LAB-KOMP-01</strong></span>
+      </span>
+      <span class="px-3 py-1.5 rounded-full bg-blue-50 text-cakap-800 border border-blue-200">
+        Literasi & Numerasi Fase C (Kelas 5 SD)
+      </span>
+    </div>
+
+    <!-- Right: Profile & Action -->
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5 pl-3 border-l border-slate-200">
+        <div id="proktor-avatar-initials" class="w-9 h-9 rounded-full bg-purple-700 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+          PR
+        </div>
+        <div class="hidden xl:block text-left">
+          <p id="proktor-header-name" class="text-xs font-bold text-slate-900 leading-tight">Pengawas Ruang Ujian</p>
+          <p id="proktor-header-email" class="text-[10px] text-slate-500 font-mono">proktor@sicakap.id</p>
+        </div>
+        <a href="../index.html" class="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition" data-action="logout" title="Logout Sesi Proktor" data-action="logout">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN WORKSPACE ================= -->
+  <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- ================= TOP SECTION: DYNAMIC 6-DIGIT TOKEN & EMERGENCY ACTIONS ================= -->
+    <div class="grid lg:grid-cols-12 gap-6 items-stretch">
+      <!-- Left: Dynamic 6-Digit Token Generator (Centerpiece) -->
+      <div class="lg:col-span-6 bg-gradient-to-br from-slate-900 via-cakap-950 to-slate-900 rounded-3xl p-6 text-white shadow-xl flex flex-col justify-between space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-xs font-bold text-blue-200 uppercase tracking-wider">Token Ujian Dinamis (6 Digit)</span>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium">Berlaku untuk Ruang LAB-KOMP-01</span>
+        </div>
+
+        <!-- Token Big Display -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 py-2">
+          <div class="flex items-center gap-4">
+            <div class="px-6 py-3 rounded-2xl bg-slate-800/90 border-2 border-teal-400/40 shadow-inner">
+              <span id="current-token" class="font-mono text-3xl sm:text-4xl font-extrabold tracking-widest text-teal-300 tabular-nums">
+                CKP26A
+              </span>
+            </div>
+            <button onclick="copyToken()" class="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 transition" title="Salin Token">
+              <i data-lucide="copy" class="w-5 h-5"></i>
+            </button>
+          </div>
+
+          <!-- Refresh Button -->
+          <button onclick="handleGenerateToken()" id="btn-generate-token" class="px-5 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-cakap-600 hover:from-teal-600 hover:to-cakap-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg transition active:scale-95 cursor-pointer">
+            <i data-lucide="key-round" class="w-4 h-4"></i>
+            <span>Generate Token Baru (15 Menit)</span>
+          </button>
+        </div>
+
+        <div class="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-400">
+          <span>Bagikan kode token ini hanya kepada siswa di dalam ruangan.</span>
+          <div class="flex items-center gap-2 font-mono text-amber-300 font-bold bg-slate-800/80 px-3 py-1 rounded-xl border border-slate-700">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Masa Berlaku: <strong id="token-countdown" class="text-white">15:00</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Quick Room Stats & Emergency Controls -->
+      <div class="lg:col-span-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <!-- Online -->
+        <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-500 uppercase">Siswa Masuk</span>
+            <i data-lucide="users" class="w-4 h-4 text-cakap-600"></i>
+          </div>
+          <div>
+            <p class="text-2xl sm:text-3xl font-extrabold text-slate-900">34</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Dari 36 Meja</p>
+          </div>
+        </div>
+
+        <!-- Mengerjakan -->
+        <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-500 uppercase">Mengerjakan</span>
+            <i data-lucide="play" class="w-4 h-4 text-emerald-600"></i>
+          </div>
+          <div>
+            <p class="text-2xl sm:text-3xl font-extrabold text-emerald-600">30</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Sedang Aktif</p>
+          </div>
+        </div>
+
+        <!-- Terkunci -->
+        <div class="p-4 rounded-2xl bg-white border-2 border-red-300 shadow-2xs flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-red-600 uppercase">Terkunci</span>
+            <i data-lucide="lock" class="w-4 h-4 text-red-600 animate-bounce"></i>
+          </div>
+          <div>
+            <p class="text-2xl sm:text-3xl font-extrabold text-red-600" id="locked-count">2</p>
+            <p class="text-[11px] text-red-600 font-semibold mt-0.5">Pindah Tab (3x)</p>
+          </div>
+        </div>
+
+        <!-- Selesai -->
+        <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-500 uppercase">Selesai</span>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-teal-600"></i>
+          </div>
+          <div>
+            <p class="text-2xl sm:text-3xl font-extrabold text-teal-600">2</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Jawaban Terkirim</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= ACTION TOOLBAR ================= -->
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold text-slate-700">Aksi Massal Ruangan:</span>
+        <button onclick="unlockAllStudents()" class="px-3.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition">
+          <i data-lucide="unlock" class="w-3.5 h-3.5"></i>
+          <span>Buka Kunci Semua Siswa Terblokir</span>
+        </button>
+        <button onclick="broadcastAnnouncement()" class="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-cakap-800 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition">
+          <i data-lucide="megaphone" class="w-3.5 h-3.5 text-cakap-600"></i>
+          <span>Kirim Pengumuman ke Layar Siswa</span>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="showToast('Daftar hadir ruang LAB-KOMP-01 dicetak!')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5">
+          <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+          <span>Cetak Daftar Hadir</span>
+        </button>
+        <button onclick="showToast('Berita acara ruang LAB-KOMP-01 disiapkan!')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+          <span>Cetak Berita Acara</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= REAL-TIME STUDENT MONITORING TABLE ================= -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+      <!-- Search & Filter Bar -->
+      <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <div class="relative w-full sm:w-72">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+            <input type="text" id="search-student" oninput="filterStudentTable()" placeholder="Cari nama siswa atau NISN..." 
+              class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-purple-600" />
+          </div>
+          <select id="status-filter" onchange="filterStudentTable()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none">
+            <option value="all">Semua Status</option>
+            <option value="locked">Hanya Terkunci (2)</option>
+            <option value="working">Sedang Mengerjakan</option>
+            <option value="finished">Selesai</option>
+          </select>
+        </div>
+
+        <div class="text-xs text-slate-500 font-medium">
+          Menampilkan <strong id="visible-student-count">6</strong> dari 36 siswa di LAB-KOMP-01
+        </div>
+      </div>
+
+      <!-- Table Container -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 text-slate-500 font-extrabold uppercase border-b border-slate-200">
+            <tr>
+              <th class="py-3.5 px-4 sm:px-6">Meja & Siswa</th>
+              <th class="py-3.5 px-4">Perangkat</th>
+              <th class="py-3.5 px-4 text-center">Status Ujian</th>
+              <th class="py-3.5 px-4 text-center">Progres Soal</th>
+              <th class="py-3.5 px-4 text-center">Pelanggaran Tab</th>
+              <th class="py-3.5 px-4 text-center">Sisa Waktu</th>
+              <th class="py-3.5 px-4 sm:px-6 text-center">Aksi Cepat Proktor</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="student-tbody">
+
+            <!-- Student 1: Normal Mengerjakan -->
+            <tr class="hover:bg-slate-50 student-row" data-status="working">
+              <td class="py-3.5 px-4 sm:px-6">
+                <div class="flex items-center gap-3">
+                  <span class="w-8 h-8 rounded-xl bg-slate-100 font-mono font-bold text-slate-700 flex items-center justify-center shrink-0">
+                    M-01
+                  </span>
+                  <div>
+                    <p class="font-bold text-slate-900 student-name">Ahmad Rizky Pratama</p>
+                    <p class="text-[11px] text-slate-400 font-mono">NISN: 0084928192 • IP: 192.168.1.101</p>
+                  </div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 text-[11px] font-semibold border border-teal-200">
+                  <i data-lucide="chrome" class="w-3.5 h-3.5 text-teal-600"></i>
+                  <span>Chromebook Kiosk</span>
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="px-2.5 py-1 rounded-full bg-blue-50 text-cakap-700 font-bold border border-blue-200">
+                  Mengerjakan
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-mono font-bold text-slate-800">28 / 40</span>
+                <div class="w-16 bg-slate-100 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                  <div class="bg-cakap-600 h-1.5 rounded-full" style="width: 70%"></div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-bold text-emerald-600">0x (Aman)</span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+                01:14:22
+              </td>
+              <td class="py-3.5 px-4 sm:px-6 text-center space-x-1">
+                <button onclick="resetStudentSession('0084928192', 'Ahmad Rizky Pratama')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px]" title="Reset Sesi Perangkat">
+                  Reset Sesi
+                </button>
+                <button onclick="addTime('0084928192')" class="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-cakap-800 font-bold text-[11px]" title="Tambah Waktu 10 Menit">
+                  +10m
+                </button>
+              </td>
+            </tr>
+
+            <!-- Student 2: TERKUNCI PINDAH TAB (ALERT) -->
+            <tr class="bg-red-50/60 hover:bg-red-50 student-row" data-status="locked" id="row-0084928193">
+              <td class="py-3.5 px-4 sm:px-6">
+                <div class="flex items-center gap-3">
+                  <span class="w-8 h-8 rounded-xl bg-red-100 font-mono font-bold text-red-700 flex items-center justify-center shrink-0">
+                    M-02
+                  </span>
+                  <div>
+                    <p class="font-bold text-slate-900 student-name">Dewi Anjani</p>
+                    <p class="text-[11px] text-slate-400 font-mono">NISN: 0084928193 • IP: 192.168.1.102</p>
+                  </div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold">
+                  <i data-lucide="laptop" class="w-3.5 h-3.5 text-cakap-600"></i>
+                  <span>Laptop Win 11</span>
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-extrabold border border-red-300 animate-pulse">
+                  🔒 Terkunci (Lockdown)
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-mono font-bold text-slate-800">14 / 40</span>
+                <div class="w-16 bg-slate-200 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                  <div class="bg-red-500 h-1.5 rounded-full" style="width: 35%"></div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-extrabold text-red-600">3x (Maksimal)</span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+                01:20:10
+              </td>
+              <td class="py-3.5 px-4 sm:px-6 text-center space-x-1">
+                <!-- PRIMARY ACTION: UNLOCK -->
+                <button onclick="unlockStudent('0084928193', 'Dewi Anjani')" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-[11px] shadow-sm flex items-center gap-1 mx-auto">
+                  <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                  <span>Buka Kunci</span>
+                </button>
+              </td>
+            </tr>
+
+            <!-- Student 3: TERKUNCI PINDAH TAB (ALERT) -->
+            <tr class="bg-red-50/60 hover:bg-red-50 student-row" data-status="locked" id="row-0084928194">
+              <td class="py-3.5 px-4 sm:px-6">
+                <div class="flex items-center gap-3">
+                  <span class="w-8 h-8 rounded-xl bg-red-100 font-mono font-bold text-red-700 flex items-center justify-center shrink-0">
+                    M-03
+                  </span>
+                  <div>
+                    <p class="font-bold text-slate-900 student-name">Fajar Pratama Putra</p>
+                    <p class="text-[11px] text-slate-400 font-mono">NISN: 0084928194 • IP: 192.168.1.103</p>
+                  </div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 text-[11px] font-semibold border border-teal-200">
+                  <i data-lucide="chrome" class="w-3.5 h-3.5 text-teal-600"></i>
+                  <span>Chromebook Kiosk</span>
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-extrabold border border-red-300 animate-pulse">
+                  🔒 Terkunci (Lockdown)
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-mono font-bold text-slate-800">19 / 40</span>
+                <div class="w-16 bg-slate-200 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                  <div class="bg-red-500 h-1.5 rounded-full" style="width: 48%"></div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-extrabold text-red-600">3x (Maksimal)</span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+                01:18:45
+              </td>
+              <td class="py-3.5 px-4 sm:px-6 text-center space-x-1">
+                <button onclick="unlockStudent('0084928194', 'Fajar Pratama Putra')" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-[11px] shadow-sm flex items-center gap-1 mx-auto">
+                  <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                  <span>Buka Kunci</span>
+                </button>
+              </td>
+            </tr>
+
+            <!-- Student 4: Selesai -->
+            <tr class="hover:bg-slate-50 student-row" data-status="finished">
+              <td class="py-3.5 px-4 sm:px-6">
+                <div class="flex items-center gap-3">
+                  <span class="w-8 h-8 rounded-xl bg-teal-50 font-mono font-bold text-teal-700 flex items-center justify-center shrink-0">
+                    M-04
+                  </span>
+                  <div>
+                    <p class="font-bold text-slate-900 student-name">Intan Nuraini</p>
+                    <p class="text-[11px] text-slate-400 font-mono">NISN: 0084928195 • IP: 192.168.1.104</p>
+                  </div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 text-[11px] font-semibold border border-teal-200">
+                  <i data-lucide="chrome" class="w-3.5 h-3.5 text-teal-600"></i>
+                  <span>Chromebook Kiosk</span>
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
+                  ✓ Selesai
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-mono font-bold text-emerald-600">40 / 40</span>
+                <div class="w-16 bg-slate-100 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                  <div class="bg-emerald-600 h-1.5 rounded-full" style="width: 100%"></div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-bold text-slate-400">0x</span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-mono text-slate-400">
+                Terkumpul
+              </td>
+              <td class="py-3.5 px-4 sm:px-6 text-center text-slate-400 text-[11px]">
+                Selesai Ujian
+              </td>
+            </tr>
+
+            <!-- Student 5: Mengerjakan HP -->
+            <tr class="hover:bg-slate-50 student-row" data-status="working">
+              <td class="py-3.5 px-4 sm:px-6">
+                <div class="flex items-center gap-3">
+                  <span class="w-8 h-8 rounded-xl bg-slate-100 font-mono font-bold text-slate-700 flex items-center justify-center shrink-0">
+                    M-05
+                  </span>
+                  <div>
+                    <p class="font-bold text-slate-900 student-name">Muhammad Fauzi</p>
+                    <p class="text-[11px] text-slate-400 font-mono">NISN: 0084928196 • IP: 192.168.1.105</p>
+                  </div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-semibold border border-amber-200">
+                  <i data-lucide="smartphone" class="w-3.5 h-3.5 text-amber-600"></i>
+                  <span>Handphone Android</span>
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="px-2.5 py-1 rounded-full bg-blue-50 text-cakap-700 font-bold border border-blue-200">
+                  Mengerjakan
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-mono font-bold text-slate-800">22 / 40</span>
+                <div class="w-16 bg-slate-100 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                  <div class="bg-cakap-600 h-1.5 rounded-full" style="width: 55%"></div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-bold text-amber-600">1x (Peringatan)</span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+                01:16:50
+              </td>
+              <td class="py-3.5 px-4 sm:px-6 text-center space-x-1">
+                <button onclick="resetStudentSession('0084928196', 'Muhammad Fauzi')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px]">
+                  Reset Sesi
+                </button>
+                <button onclick="addTime('0084928196')" class="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-cakap-800 font-bold text-[11px]">
+                  +10m
+                </button>
+              </td>
+            </tr>
+
+            <!-- Student 6: Mengerjakan PC -->
+            <tr class="hover:bg-slate-50 student-row" data-status="working">
+              <td class="py-3.5 px-4 sm:px-6">
+                <div class="flex items-center gap-3">
+                  <span class="w-8 h-8 rounded-xl bg-slate-100 font-mono font-bold text-slate-700 flex items-center justify-center shrink-0">
+                    M-06
+                  </span>
+                  <div>
+                    <p class="font-bold text-slate-900 student-name">Nabila Putri Ramadhani</p>
+                    <p class="text-[11px] text-slate-400 font-mono">NISN: 0084928197 • IP: 192.168.1.106</p>
+                  </div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 text-[11px] font-semibold border border-teal-200">
+                  <i data-lucide="chrome" class="w-3.5 h-3.5 text-teal-600"></i>
+                  <span>Chromebook Kiosk</span>
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="px-2.5 py-1 rounded-full bg-blue-50 text-cakap-700 font-bold border border-blue-200">
+                  Mengerjakan
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-mono font-bold text-slate-800">31 / 40</span>
+                <div class="w-16 bg-slate-100 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                  <div class="bg-cakap-600 h-1.5 rounded-full" style="width: 77%"></div>
+                </div>
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="font-bold text-emerald-600">0x (Aman)</span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+                01:10:04
+              </td>
+              <td class="py-3.5 px-4 sm:px-6 text-center space-x-1">
+                <button onclick="resetStudentSession('0084928197', 'Nabila Putri Ramadhani')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px]">
+                  Reset Sesi
+                </button>
+                <button onclick="addTime('0084928197')" class="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-cakap-800 font-bold text-[11px]">
+                  +10m
+                </button>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= ACTION CONFIRMATION MODAL ================= -->
+  <div id="modal-confirm-action" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+      <div class="flex items-center gap-3">
+        <div id="confirm-modal-icon-bg" class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+          <i data-lucide="alert-triangle" class="w-6 h-6" id="confirm-modal-icon"></i>
+        </div>
+        <div>
+          <h3 id="confirm-modal-title" class="text-base font-black text-slate-900">Konfirmasi Tindakan Proktor</h3>
+          <p id="confirm-modal-subtitle" class="text-xs text-slate-500">Peringatan aksi pengawas ruang</p>
+        </div>
+      </div>
+      <p id="confirm-modal-message" class="text-xs sm:text-sm text-slate-700 leading-relaxed font-semibold">
+        Apakah Anda yakin ingin mengeksekusi tindakan ini?
+      </p>
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+        <button type="button" onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
+          Batal
+        </button>
+        <button type="button" id="btn-confirm-proceed" class="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shadow-md transition cursor-pointer">
+          Ya, Lanjutkan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 translate-y-20 opacity-0">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+    <span id="toast-message">Operasi berhasil!</span>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC PROKTOR RUANG -->
+  <script>
+    lucide.createIcons();
+
+    // State Proktor Dashboard
+    let currentExamId = '00000000-0000-0000-0000-000000000001';
+    let currentSchoolId = '00000000-0000-0000-0000-000000000001';
+    let currentProctorId = '00000000-0000-0000-0000-000000000002';
+    let tokenTimerInterval = null;
+    let tokenExpiresAt = null;
+    let monitoredSessions = [];
+    let unsubscribeRealtime = null;
+    let pendingConfirmAction = null;
+
+    // Default Fallback Roster Siswa (ketika offline atau sebelum data Supabase terisi)
+    const DEFAULT_ROSTER = [
+      {
+        id: 'sess-001',
+        desk: 'M-01',
+        student: { id: 'std-1', full_name: 'Ahmad Rizky Pratama', identifier: '0084928192', class_name: 'Kelas 5A' },
+        device: 'Chromebook Kiosk',
+        status: 'in_progress',
+        progress: '28 / 40',
+        progress_pct: 70,
+        violation_count: 0,
+        remaining_time: '01:14:22'
+      },
+      {
+        id: 'sess-002',
+        desk: 'M-02',
+        student: { id: 'std-2', full_name: 'Dewi Anjani', identifier: '0084928193', class_name: 'Kelas 5A' },
+        device: 'Laptop Win 11',
+        status: 'locked',
+        progress: '14 / 40',
+        progress_pct: 35,
+        violation_count: 3,
+        remaining_time: '01:20:10'
+      },
+      {
+        id: 'sess-003',
+        desk: 'M-03',
+        student: { id: 'std-3', full_name: 'Fajar Pratama Putra', identifier: '0084928194', class_name: 'Kelas 5A' },
+        device: 'Chromebook Kiosk',
+        status: 'locked',
+        progress: '19 / 40',
+        progress_pct: 48,
+        violation_count: 3,
+        remaining_time: '01:18:45'
+      },
+      {
+        id: 'sess-004',
+        desk: 'M-04',
+        student: { id: 'std-4', full_name: 'Intan Nuraini', identifier: '0084928195', class_name: 'Kelas 5A' },
+        device: 'Chromebook Kiosk',
+        status: 'submitted',
+        progress: '40 / 40',
+        progress_pct: 100,
+        violation_count: 0,
+        remaining_time: 'Selesai'
+      },
+      {
+        id: 'sess-005',
+        desk: 'M-05',
+        student: { id: 'std-5', full_name: 'Muhammad Fauzi', identifier: '0084928196', class_name: 'Kelas 5A' },
+        device: 'Handphone Android',
+        status: 'in_progress',
+        progress: '22 / 40',
+        progress_pct: 55,
+        violation_count: 1,
+        remaining_time: '01:16:50'
+      },
+      {
+        id: 'sess-006',
+        desk: 'M-06',
+        student: { id: 'std-6', full_name: 'Nabila Putri Ramadhani', identifier: '0084928197', class_name: 'Kelas 5A' },
+        device: 'Chromebook Kiosk',
+        status: 'not_started',
+        progress: '0 / 40',
+        progress_pct: 0,
+        violation_count: 0,
+        remaining_time: 'Belum Mulai'
+      }
+    ];
+
+    // ================= 1. INISIALISASI & LOAD SKELETON =================
+    window.addEventListener('DOMContentLoaded', async () => {
+      lucide.createIcons();
+      showTableSkeleton();
+
+      // Dapatkan profil user saat ini
+      try {
+        if (window.getCurrentUserProfile) {
+          const { user, profile } = await window.getCurrentUserProfile();
+          if (profile?.school_id) currentSchoolId = profile.school_id;
+          if (user?.id) currentProctorId = user.id;
+        }
+      } catch (e) {
+        console.warn('[Proctor Auth Warn]:', e);
+      }
+
+      // Mulai countdown token default
+      startTokenCountdown(new Date(Date.now() + 15 * 60 * 1000));
+
+      // Fetch data sesi dari Supabase
+      await loadProctorSessions();
+
+      // Subscribe realtime
+      initRealtimeSubscription();
+    });
+
+    function showTableSkeleton() {
+      const tbody = document.getElementById('student-tbody');
+      if (!tbody) return;
+
+      tbody.innerHTML = Array(6).fill(0).map((_, i) => `
+        <tr class="animate-pulse">
+          <td class="py-3.5 px-4 sm:px-6">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-xl bg-slate-200"></div>
+              <div class="space-y-1.5">
+                <div class="h-3.5 bg-slate-200 rounded w-28"></div>
+                <div class="h-2.5 bg-slate-200 rounded w-36"></div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3.5 px-4"><div class="h-5 bg-slate-200 rounded-lg w-24"></div></td>
+          <td class="py-3.5 px-4 text-center"><div class="h-6 bg-slate-200 rounded-full w-20 mx-auto"></div></td>
+          <td class="py-3.5 px-4 text-center"><div class="h-4 bg-slate-200 rounded w-16 mx-auto"></div></td>
+          <td class="py-3.5 px-4 text-center"><div class="h-5 bg-slate-200 rounded-full w-14 mx-auto"></div></td>
+          <td class="py-3.5 px-4 text-center"><div class="h-4 bg-slate-200 rounded w-14 mx-auto"></div></td>
+          <td class="py-3.5 px-4 sm:px-6 text-center"><div class="h-7 bg-slate-200 rounded-xl w-32 mx-auto"></div></td>
+        </tr>
+      `).join('');
+    }
+
+    // ================= 2. LOAD SESSIONS FROM SUPABASE =================
+    async function loadProctorSessions() {
+      try {
+        if (window.fetchProctorMonitor) {
+          const { sessions } = await window.fetchProctorMonitor(currentExamId);
+          if (sessions && sessions.length > 0) {
+            monitoredSessions = sessions.map((s, idx) => ({
+              id: s.id,
+              desk: `M-${String(idx + 1).padStart(2, '0')}`,
+              student: s.student || { full_name: 'Siswa Peserta', identifier: '-', class_name: '-' },
+              device: s.device_token ? 'Sesi Terikat' : 'Web Browser',
+              status: s.status || 'in_progress',
+              progress: s.status === 'submitted' ? '40 / 40' : (s.status === 'not_started' ? '0 / 40' : '25 / 40'),
+              progress_pct: s.status === 'submitted' ? 100 : (s.status === 'not_started' ? 0 : 60),
+              violation_count: s.violation_count || 0,
+              remaining_time: s.status === 'submitted' ? 'Selesai' : (s.extra_minutes ? `+${s.extra_minutes}m` : '01:15:00')
+            }));
+          } else {
+            monitoredSessions = [...DEFAULT_ROSTER];
+          }
+        } else {
+          monitoredSessions = [...DEFAULT_ROSTER];
+        }
+      } catch (err) {
+        console.warn('[Fetch Proctor Monitor Warn, fallback]:', err);
+        monitoredSessions = [...DEFAULT_ROSTER];
+      }
+
+      renderStudentTable();
+      updateDashboardStats();
+    }
+
+    function initRealtimeSubscription() {
+      if (typeof window.subscribeProctorRealtime === 'function') {
+        try {
+          if (unsubscribeRealtime) unsubscribeRealtime();
+          unsubscribeRealtime = window.subscribeProctorRealtime(currentExamId, (evt) => {
+            console.log('[Realtime Proctor Event]:', evt);
+            if (evt.source === 'session') {
+              showToast('⚡ Pembaruan sesi siswa terdeteksi via Realtime Supabase!');
+              loadProctorSessions();
+            } else if (evt.source === 'log') {
+              const eventType = evt.payload?.new?.event_type;
+              if (eventType === 'TAB_SWITCH') {
+                showToast('⚠️ Peringatan: Seorang siswa berpindah tab browser!', 'warning');
+              }
+              loadProctorSessions();
+            }
+          });
+        } catch (e) {
+          console.warn('[Realtime Subscription Warn]:', e);
+        }
+      }
+    }
+
+    // ================= 3. RENDER TABLE & STATS =================
+    function renderStudentTable() {
+      const tbody = document.getElementById('student-tbody');
+      if (!tbody) return;
+
+      const search = (document.getElementById('search-student')?.value || '').toLowerCase().trim();
+      const statusFilter = document.getElementById('status-filter')?.value || 'all';
+
+      const filtered = monitoredSessions.filter(s => {
+        const name = (s.student?.full_name || '').toLowerCase();
+        const nisn = (s.student?.identifier || '').toLowerCase();
+        const matchSearch = !search || name.includes(search) || nisn.includes(search);
+
+        let matchStatus = true;
+        if (statusFilter === 'locked') {
+          matchStatus = s.status === 'locked' || s.violation_count >= 3;
+        } else if (statusFilter === 'working') {
+          matchStatus = s.status === 'in_progress';
+        } else if (statusFilter === 'finished') {
+          matchStatus = s.status === 'submitted';
+        }
+
+        return matchSearch && matchStatus;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-12 text-center text-slate-400 font-bold space-y-1">
+              <p class="text-2xl">📋</p>
+              <p class="text-slate-600 font-black">Tidak ada peserta ditemukan.</p>
+              <p class="text-xs font-normal">Periksa kembali kata kunci pencarian atau filter status.</p>
+            </td>
+          </tr>
+        `;
+        document.getElementById('visible-student-count').textContent = '0';
+        return;
+      }
+
+      document.getElementById('visible-student-count').textContent = filtered.length;
+
+      tbody.innerHTML = filtered.map((s) => {
+        const isLocked = s.status === 'locked' || s.violation_count >= 3;
+        const isSubmitted = s.status === 'submitted';
+        const isNotStarted = s.status === 'not_started';
+
+        // Badge Status
+        let statusBadge = '';
+        if (isLocked) {
+          statusBadge = '<span class="px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 font-black border border-rose-300 animate-pulse">🔒 Terkunci</span>';
+        } else if (isSubmitted) {
+          statusBadge = '<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">✓ Selesai</span>';
+        } else if (isNotStarted) {
+          statusBadge = '<span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-bold border border-slate-200">Belum Login</span>';
+        } else {
+          statusBadge = '<span class="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">Mengerjakan</span>';
+        }
+
+        // Badge Pelanggaran Tab
+        let tabBadge = '';
+        if (s.violation_count > 0) {
+          tabBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-black border border-rose-300 text-[11px]">⚠️ ${s.violation_count}x</span>`;
+        } else {
+          tabBadge = '<span class="font-bold text-emerald-600">0x (Aman)</span>';
+        }
+
+        const rowBg = isLocked ? 'bg-rose-50/50 hover:bg-rose-50' : 'hover:bg-slate-50';
+
+        return `
+          <tr class="${rowBg} student-row transition" data-status="${s.status}">
+            <td class="py-3.5 px-4 sm:px-6">
+              <div class="flex items-center gap-3">
+                <span class="w-8 h-8 rounded-xl ${isLocked ? 'bg-rose-100 text-rose-700 font-bold' : 'bg-slate-100 text-slate-700'} font-mono font-bold flex items-center justify-center shrink-0">
+                  ${s.desk || 'M-01'}
+                </span>
+                <div>
+                  <p class="font-bold text-slate-900 student-name">${s.student?.full_name || 'Peserta'}</p>
+                  <p class="text-[11px] text-slate-400 font-mono">NISN: ${s.student?.identifier || '-'} • ${s.student?.class_name || 'SD'}</p>
+                </div>
+              </div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold">
+                <i data-lucide="laptop" class="w-3.5 h-3.5 text-slate-500"></i>
+                <span>${s.device || 'Kiosk'}</span>
+              </span>
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              ${statusBadge}
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              <span class="font-mono font-bold text-slate-800">${s.progress || '0 / 40'}</span>
+              <div class="w-16 bg-slate-100 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
+                <div class="${isLocked ? 'bg-rose-500' : 'bg-blue-600'} h-1.5 rounded-full" style="width: ${s.progress_pct || 0}%"></div>
+              </div>
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              ${tabBadge}
+            </td>
+            <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+              ${s.remaining_time || '01:15:00'}
+            </td>
+            <td class="py-3.5 px-4 sm:px-6 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                ${isLocked ? `
+                  <button onclick="confirmUnlockStudent('${s.id}', '${s.student?.full_name}')" class="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] shadow-sm flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="key" class="w-3 h-3"></i>
+                    <span>Buka Kunci</span>
+                  </button>
+                ` : ''}
+                <button onclick="confirmResetLogin('${s.id}', '${s.student?.full_name}')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer" title="Reset Sesi Perangkat">
+                  Reset Login
+                </button>
+                <button onclick="confirmAddExtraTime('${s.id}', '${s.student?.full_name}')" class="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-[11px] cursor-pointer" title="Tambah Waktu 10 Menit">
+                  +10m
+                </button>
+                ${!isSubmitted ? `
+                  <button onclick="confirmForceSubmit('${s.id}', '${s.student?.full_name}')" class="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] cursor-pointer" title="Paksa Selesai Ujian">
+                    Paksa Selesai
+                  </button>
+                ` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function updateDashboardStats() {
+      const total = monitoredSessions.length;
+      const working = monitoredSessions.filter(s => s.status === 'in_progress').length;
+      const locked = monitoredSessions.filter(s => s.status === 'locked' || s.violation_count >= 3).length;
+      const finished = monitoredSessions.filter(s => s.status === 'submitted').length;
+
+      const lockedEl = document.getElementById('locked-count');
+      if (lockedEl) lockedEl.textContent = locked;
+    }
+
+    // ================= 4. TOKEN GENERATOR (15 MENIT) & COUNTDOWN =================
+    async function handleGenerateToken() {
+      const btn = document.getElementById('btn-generate-token');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> Membuat token...';
+      }
+
+      try {
+        let token = '';
+        if (window.generateExamToken) {
+          const res = await window.generateExamToken(currentExamId, 15);
+          token = res.token_code;
+          tokenExpiresAt = new Date(res.token_expires_at);
+        } else {
+          // Fallback lokal
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          token = 'CKP';
+          for (let i = 0; i < 3; i++) token += chars.charAt(Math.floor(Math.random() * chars.length));
+          tokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        }
+
+        document.getElementById('current-token').textContent = token;
+        sessionStorage.setItem('sicakap_token', token);
+        startTokenCountdown(tokenExpiresAt);
+
+        showToast(`Token baru "${token}" aktif selama 15 menit!`, 'success');
+      } catch (err) {
+        console.error('[Generate Token Error]:', err);
+        showToast('Gagal merilis token baru: ' + err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="key-round" class="w-4 h-4"></i><span>Generate Token Baru (15 Menit)</span>';
+          lucide.createIcons();
+        }
+      }
+    }
+    window.handleGenerateToken = handleGenerateToken;
+
+    function startTokenCountdown(expiresAt) {
+      if (tokenTimerInterval) clearInterval(tokenTimerInterval);
+
+      function tick() {
+        const now = Date.now();
+        const diffSec = Math.max(0, Math.floor((expiresAt.getTime() - now) / 1000));
+        const min = Math.floor(diffSec / 60);
+        const sec = diffSec % 60;
+        const countdownEl = document.getElementById('token-countdown');
+
+        if (!countdownEl) return;
+
+        if (diffSec <= 0) {
+          countdownEl.textContent = 'Kedaluwarsa (00:00)';
+          countdownEl.className = 'text-rose-400 font-black';
+          clearInterval(tokenTimerInterval);
+          return;
+        }
+
+        countdownEl.textContent = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        if (diffSec < 180) {
+          countdownEl.className = 'text-rose-300 font-bold animate-pulse';
+        } else {
+          countdownEl.className = 'text-white font-bold';
+        }
+      }
+
+      tick();
+      tokenTimerInterval = setInterval(tick, 1000);
+    }
+
+    function copyToken() {
+      const token = document.getElementById('current-token').textContent.trim();
+      navigator.clipboard.writeText(token).then(() => {
+        showToast(`Token "${token}" berhasil disalin!`, 'success');
+      }).catch(() => {
+        showToast(`Token "${token}" tersalin.`, 'success');
+      });
+    }
+    window.copyToken = copyToken;
+
+    // ================= 5. CONFIRMATION MODALS & STUDENT ACTIONS =================
+    function openConfirmModal({ title, subtitle, message, btnText, btnClass, onConfirm }) {
+      document.getElementById('confirm-modal-title').textContent = title;
+      document.getElementById('confirm-modal-subtitle').textContent = subtitle;
+      document.getElementById('confirm-modal-message').textContent = message;
+
+      const proceedBtn = document.getElementById('btn-confirm-proceed');
+      proceedBtn.textContent = btnText || 'Ya, Lanjutkan';
+      proceedBtn.className = `px-5 py-2 rounded-xl text-white font-black text-xs shadow-md transition cursor-pointer ${btnClass || 'bg-amber-600 hover:bg-amber-700'}`;
+
+      pendingConfirmAction = onConfirm;
+      document.getElementById('modal-confirm-action').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('modal-confirm-action').classList.add('hidden');
+      pendingConfirmAction = null;
+    }
+    window.closeConfirmModal = closeConfirmModal;
+
+    document.getElementById('btn-confirm-proceed')?.addEventListener('click', async () => {
+      if (typeof pendingConfirmAction === 'function') {
+        const action = pendingConfirmAction;
+        closeConfirmModal();
+        await action();
+      }
+    });
+
+    // A. Buka Kunci Siswa
+    function confirmUnlockStudent(sessionId, studentName) {
+      openConfirmModal({
+        title: 'Buka Kunci Layar Siswa',
+        subtitle: 'Otorisasi Pengawas Ruang',
+        message: `Buka kunci ujian untuk siswa ${studentName}? Pelanggaran tab akan direset ke 0 dan layar ujian siswa dapat kembali diakses.`,
+        btnText: 'Buka Kunci Sekarang',
+        btnClass: 'bg-rose-600 hover:bg-rose-700',
+        onConfirm: async () => {
+          showToast(`Membuka kunci layar untuk ${studentName}...`);
+          try {
+            if (window.resetStudentLogin) {
+              await window.resetStudentLogin({ sessionId, schoolId: currentSchoolId, proctorId: currentProctorId });
+            }
+            const s = monitoredSessions.find(item => item.id === sessionId);
+            if (s) {
+              s.status = 'in_progress';
+              s.violation_count = 0;
+            }
+            renderStudentTable();
+            updateDashboardStats();
+            showToast(`✅ Layar ${studentName} berhasil dibuka!`, 'success');
+          } catch (e) {
+            showToast('❌ Gagal membuka kunci: ' + e.message, 'error');
+          }
+        }
+      });
+    }
+    window.confirmUnlockStudent = confirmUnlockStudent;
+
+    // B. Reset Login
+    function confirmResetLogin(sessionId, studentName) {
+      openConfirmModal({
+        title: 'Reset Login Perangkat',
+        subtitle: 'Ganti / Relokasi Perangkat Siswa',
+        message: `Reset sesi perangkat untuk siswa ${studentName}? Token perangkat sebelumnya akan dikosongkan sehingga siswa dapat login kembali dari perangkat lain.`,
+        btnText: 'Reset Sesi Login',
+        btnClass: 'bg-slate-800 hover:bg-slate-900',
+        onConfirm: async () => {
+          showToast(`Mereset sesi login ${studentName}...`);
+          try {
+            if (window.resetStudentLogin) {
+              await window.resetStudentLogin({ sessionId, schoolId: currentSchoolId, proctorId: currentProctorId });
+            }
+            const s = monitoredSessions.find(item => item.id === sessionId);
+            if (s) s.device = 'Menunggu Login Ulang';
+            renderStudentTable();
+            showToast(`✅ Sesi ${studentName} direset! Siswa dapat masuk dari perangkat baru.`, 'success');
+          } catch (e) {
+            showToast('❌ Gagal reset login: ' + e.message, 'error');
+          }
+        }
+      });
+    }
+    window.confirmResetLogin = confirmResetLogin;
+
+    // C. Tambah Waktu (+10 Menit)
+    function confirmAddExtraTime(sessionId, studentName) {
+      openConfirmModal({
+        title: 'Tambah Waktu Ujian (+10 Menit)',
+        subtitle: 'Kompensasi Gangguan Teknis',
+        message: `Tambahkan perpanjangan waktu 10 menit untuk peserta ${studentName}? Waktu ujian di layar siswa akan otomatis bertambah.`,
+        btnText: 'Tambah +10 Menit',
+        btnClass: 'bg-blue-600 hover:bg-blue-700',
+        onConfirm: async () => {
+          showToast(`Menambahkan waktu untuk ${studentName}...`);
+          try {
+            if (window.addExtraTime) {
+              await window.addExtraTime({ sessionId, schoolId: currentSchoolId, proctorId: currentProctorId, minutes: 10 });
+            }
+            const s = monitoredSessions.find(item => item.id === sessionId);
+            if (s) s.remaining_time = '+10m Ditambahkan';
+            renderStudentTable();
+            showToast(`✅ Waktu tambahan +10 menit berhasil diberikan ke ${studentName}!`, 'success');
+          } catch (e) {
+            showToast('❌ Gagal menambah waktu: ' + e.message, 'error');
+          }
+        }
+      });
+    }
+    window.confirmAddExtraTime = confirmAddExtraTime;
+
+    // D. Paksa Selesai Ujian
+    function confirmForceSubmit(sessionId, studentName) {
+      openConfirmModal({
+        title: 'Paksa Selesai Ujian',
+        subtitle: 'Tutup & Koreksi Sesi',
+        message: `PERINGATAN: Paksa selesai ujian untuk ${studentName}? Lembar jawaban siswa akan dikunci dan dikoreksi otomatis di server. Tindakan ini tidak dapat dibatalkan!`,
+        btnText: 'Ya, Paksa Selesai',
+        btnClass: 'bg-rose-700 hover:bg-rose-800',
+        onConfirm: async () => {
+          showToast(`Mengunci & mengumpulkan jawaban ${studentName}...`);
+          try {
+            if (window.forceSubmitStudent) {
+              await window.forceSubmitStudent({ sessionId, schoolId: currentSchoolId, proctorId: currentProctorId });
+            }
+            const s = monitoredSessions.find(item => item.id === sessionId);
+            if (s) {
+              s.status = 'submitted';
+              s.remaining_time = 'Selesai';
+            }
+            renderStudentTable();
+            updateDashboardStats();
+            showToast(`✅ Ujian ${studentName} berhasil dipaksa selesai & dikoreksi!`, 'success');
+          } catch (e) {
+            showToast('❌ Gagal paksa selesai: ' + e.message, 'error');
+          }
+        }
+      });
+    }
+    window.confirmForceSubmit = confirmForceSubmit;
+
+    function unlockAllStudents() {
+      openConfirmModal({
+        title: 'Buka Semua Siswa Terkunci',
+        subtitle: 'Buka Kunci Massal',
+        message: 'Buka kunci layar untuk SEMUA siswa yang terkena lockdown pindah tab di ruangan ini?',
+        btnText: 'Buka Semua Sekarang',
+        btnClass: 'bg-rose-600 hover:bg-rose-700',
+        onConfirm: async () => {
+          monitoredSessions.forEach(s => {
+            if (s.status === 'locked' || s.violation_count >= 3) {
+              s.status = 'in_progress';
+              s.violation_count = 0;
+            }
+          });
+          renderStudentTable();
+          updateDashboardStats();
+          showToast('✅ Seluruh siswa terkunci berhasil dibuka!', 'success');
+        }
+      });
+    }
+    window.unlockAllStudents = unlockAllStudents;
+
+    function broadcastAnnouncement() {
+      const msg = prompt('Ketikkan pengumuman yang akan tampil di layar seluruh siswa di LAB-KOMP-01:', 'Sisa waktu 15 menit, periksa kembali soal yang masih ragu-ragu.');
+      if (msg) {
+        showToast(`Pengumuman terkirim: "${msg}"`, 'success');
+      }
+    }
+    window.broadcastAnnouncement = broadcastAnnouncement;
+
+    // Filter Table
+    function filterStudentTable() {
+      renderStudentTable();
+    }
+    window.filterStudentTable = filterStudentTable;
+
+    // Toast Notification Multi-Type
+    function showToast(msg, type = 'success') {
+      const toast = document.getElementById('toast');
+      const text = document.getElementById('toast-message');
+      if (!toast || !text) return;
+
+      text.textContent = msg;
+      if (type === 'error') {
+        toast.className = 'fixed bottom-5 right-5 z-50 bg-rose-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 border border-rose-700';
+      } else if (type === 'warning') {
+        toast.className = 'fixed bottom-5 right-5 z-50 bg-amber-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 border border-amber-700';
+      } else {
+        toast.className = 'fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 border border-slate-700';
+      }
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3500);
+      lucide.createIcons();
+    }
+    window.showToast = showToast;
+  </script>
+</body>

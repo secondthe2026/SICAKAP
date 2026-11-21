@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SI-CAKAP SD | Platform Ujian & Asesmen Ceria Sekolah Dasar</title>
+  <meta name="description" content="Platform Asesmen & Ujian Ramah Anak Sekolah Dasar (SD/MI) Kelas 1-6. Ringan di Chromebook, HP, dan Laptop dengan Live Score otomatis." />
+
+  <!-- Google Fonts: Nunito & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Nunito:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Local Tailwind CSS Build -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Tailwind CSS CDN -->
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Impeccable LocalStorage Data Persistence Layer -->
+  <script src="/assets/js/sicakap-db.js"></script>
+  <script type="module" src="/src/services/data-store.js"></script>
+  <!-- Supabase Auth & Role Matrix Bridge -->
+  <script type="module">
+    import { supabase, getCurrentUserProfile } from '/src/lib/supabase.js';
+    import { ROLE_DASHBOARD_MAP } from '/src/lib/guard.js';
+
+    window.supabase = supabase;
+    window.ROLE_DASHBOARD_MAP = ROLE_DASHBOARD_MAP;
+    window.getCurrentUserProfile = getCurrentUserProfile;
+  </script>
+
+</head>
+<body class="min-h-screen flex flex-col justify-between overflow-x-hidden bg-gradient-to-br from-sky-50 via-white to-amber-50/40 text-slate-800 antialiased selection:bg-sky-500 selection:text-white font-sans relative">
+
+  <!-- ================= LATAR BELAKANG AKSEN CERIA (SOFT EDTECH BLOBS) ================= -->
+  <div class="absolute -top-24 -left-24 w-80 sm:w-96 h-80 sm:h-96 bg-sky-200/40 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute top-1/4 -right-24 w-72 sm:w-96 h-72 sm:h-96 bg-emerald-200/30 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute -bottom-24 left-1/3 w-80 sm:w-96 h-80 sm:h-96 bg-amber-200/35 rounded-full blur-3xl pointer-events-none"></div>
+
+  <!-- ================= 1. FLOATING PILL NAVBAR (MENGAMBANG DI ATAS) ================= -->
+  <header class="pt-3 sm:pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full shrink-0 z-40 relative">
+    <nav class="bg-white/95 backdrop-blur-md border border-sky-100 rounded-full px-4 sm:px-6 py-2 sm:py-2.5 shadow-lg shadow-sky-100/60 flex items-center justify-between">
+      
+      <!-- Brand Logo SD Ceria -->
+      <a href="index.html" class="flex items-center gap-2.5 sm:gap-3 group">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-sky-500 via-sky-600 to-blue-600 flex items-center justify-center text-white shadow-md shadow-sky-500/25 group-hover:scale-105 transition-transform">
+          <i data-lucide="graduation-cap" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-black text-lg sm:text-xl tracking-tight text-slate-800">
+            SI-CAKAP <span class="text-sky-600">SD</span>
+          </span>
+          <span class="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full border border-amber-200 shadow-2xs">
+            <span>✨</span> Ceria & Cerdas
+          </span>
+        </div>
+      </a>
+
+      <!-- Center Pill Nav Links (Desktop) -->
+      <div class="hidden md:flex items-center gap-1 sm:gap-2">
+        <a href="pages/fitur.html" class="px-3.5 py-1.5 rounded-full text-xs font-extrabold text-slate-600 hover:text-sky-600 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition flex items-center gap-1.5">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+          <span>Fitur</span>
+        </a>
+        <a href="pages/kompatibilitas.html" class="px-3.5 py-1.5 rounded-full text-xs font-extrabold text-slate-600 hover:text-sky-600 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition flex items-center gap-1.5">
+          <i data-lucide="laptop" class="w-3.5 h-3.5 text-sky-500"></i>
+          <span>Perangkat</span>
+        </a>
+        <a href="pages/guru-dashboard.html" class="px-3.5 py-1.5 rounded-full text-xs font-extrabold text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition flex items-center gap-1.5">
+          <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-emerald-500"></i>
+          <span>Live Score</span>
+        </a>
+      </div>
+
+      <!-- Right Action Button & Mobile Toggle -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button type="button" onclick="openRegisterSchoolModal()" class="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-sm shadow-amber-400/30 flex items-center gap-1.5 transition transform hover:scale-105 active:scale-95 cursor-pointer">
+          <i data-lucide="school" class="w-4 h-4"></i>
+          <span>+ Daftarkan SD Baru</span>
+        </button>
+
+        <button type="button" id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-full text-slate-600 hover:bg-sky-50 hover:text-sky-600 transition cursor-pointer" aria-label="Buka Menu">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+    </nav>
+
+    <!-- Mobile Dropdown Menu -->
+    <div id="mobile-menu" class="hidden md:hidden mt-2 bg-white/95 backdrop-blur-md rounded-3xl p-4 shadow-xl border border-sky-100 space-y-2">
+      <a href="pages/fitur.html" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-sky-50 hover:text-sky-600 transition">
+        <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+        <span>✨ Fitur Unggulan SD</span>
+      </a>
+      <a href="pages/kompatibilitas.html" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-sky-50 hover:text-sky-600 transition">
+        <i data-lucide="laptop" class="w-4 h-4 text-sky-500"></i>
+        <span>💻 Simulasi Chromebook & HP</span>
+      </a>
+      <a href="pages/guru-dashboard.html" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 transition">
+        <i data-lucide="bar-chart-3" class="w-4 h-4 text-emerald-500"></i>
+        <span>📊 Live Score Guru SD</span>
+      </a>
+      <a href="pages/alur.html" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition">
+        <i data-lucide="map" class="w-4 h-4 text-purple-500"></i>
+        <span>📖 Alur Ujian Siswa</span>
+      </a>
+    </div>
+
+    <!-- Persistence Status Bar (Real-Time Sync) -->
+    <div id="index-persistence-bar" class="mt-2.5 max-w-2xl mx-auto flex items-center justify-center">
+      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold shadow-2xs">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>🟢 Terhubung ke Supabase Cloud</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- ================= 2. HERO SECTION & PORTAL LOGIN CERIA (1 LAYAR PENUH) ================= -->
+  <main class="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 py-3 lg:py-4 max-w-7xl mx-auto w-full z-10">
+    <div class="grid lg:grid-cols-12 gap-6 lg:gap-8 xl:gap-12 items-center w-full">
+
+      <!-- ================= KIRI: SAPAAN SEGAR & INFO RINGKAS ================= -->
+      <div class="lg:col-span-7 xl:col-span-7 space-y-3.5 sm:space-y-4 lg:space-y-5">
+        
+        <!-- [Badge Ceria] -->
+        <div>
+          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100/90 border border-amber-300 text-amber-900 text-xs sm:text-sm font-black shadow-2xs">
+            <span class="animate-bounce">🌟</span>
+            <span>Platform Ujian &amp; Kompetensi Sekolah Dasar (Kelas 1 - 6 SD)</span>
+          </div>
+        </div>
+
+        <!-- Judul Besar -->
+        <h1 class="text-2xl sm:text-4xl lg:text-[2.75rem] font-black text-slate-900 tracking-tight leading-[1.18]">
+          Ujian Sekolah Jadi Lebih Seru, Ringan, &amp; <br class="hidden sm:inline" />
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-emerald-600 to-amber-500">
+            Bebas Khawatir!
+          </span>
+        </h1>
+
+        <!-- Deskripsi -->
+        <p class="text-xs sm:text-sm lg:text-base text-slate-600 font-medium leading-relaxed max-w-xl">
+          Didesain khusus untuk siswa dan guru SD. Nyaman dikerjakan di Chromebook sekolah, HP, maupun Laptop dengan Live Score otomatis.
+        </p>
+
+        <!-- [3 Kartu Mini Berwarna - Bersebelahan] -->
+        <div class="grid grid-cols-3 gap-2.5 sm:gap-3 pt-1">
+          
+          <!-- Kartu 1: Chromebook & HP -->
+          <div class="p-2.5 sm:p-3 rounded-2xl bg-white/90 border border-sky-200/90 shadow-sm shadow-sky-100 flex flex-col justify-between hover:-translate-y-0.5 transition-transform">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
+              <i data-lucide="laptop" class="w-4 h-4"></i>
+            </div>
+            <div class="mt-2">
+              <h3 class="font-black text-xs text-slate-800">💻 Chromebook &amp; HP</h3>
+              <p class="text-[10px] sm:text-[11px] text-slate-500 font-semibold mt-0.5">Ringan &amp; Responsif</p>
+            </div>
+          </div>
+
+          <!-- Kartu 2: Auto-Save Aman -->
+          <div class="p-2.5 sm:p-3 rounded-2xl bg-white/90 border border-emerald-200/90 shadow-sm shadow-emerald-100 flex flex-col justify-between hover:-translate-y-0.5 transition-transform">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+              <i data-lucide="zap" class="w-4 h-4"></i>
+            </div>
+            <div class="mt-2">
+              <h3 class="font-black text-xs text-slate-800">⚡ Auto-Save Aman</h3>
+              <p class="text-[10px] sm:text-[11px] text-slate-500 font-semibold mt-0.5">Jawaban Tak Hilang</p>
+            </div>
+          </div>
+
+          <!-- Kartu 3: Live Score Guru -->
+          <div class="p-2.5 sm:p-3 rounded-2xl bg-white/90 border border-amber-200/90 shadow-sm shadow-amber-100 flex flex-col justify-between hover:-translate-y-0.5 transition-transform">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+              <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
+            </div>
+            <div class="mt-2">
+              <h3 class="font-black text-xs text-slate-800">🔴 Live Score Guru</h3>
+              <p class="text-[10px] sm:text-[11px] text-slate-500 font-semibold mt-0.5">Pantau Nilai Cepat</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Micro Pills Edukatif -->
+        <div class="flex flex-wrap items-center gap-2 pt-1 text-[11px] font-bold text-slate-600">
+          <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/80 border border-slate-200 text-slate-700">
+            <span>🧸</span> Ramah Siswa SD
+          </span>
+          <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/80 border border-slate-200 text-slate-700">
+            <span>🔒</span> Bebas Gangguan
+          </span>
+          <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/80 border border-slate-200 text-slate-700">
+            <span>📚</span> Bank Soal AKM Fase A, B, C
+          </span>
+        </div>
+
+      </div>
+
+      <!-- ================= KANAN: KARTU LOGIN INTERAKTIF (ROUNDED-3XL + BORDER CERAH) ================= -->
+      <div id="portal-login" class="lg:col-span-5 xl:col-span-5">
+        <div id="login-card" class="bg-white/95 backdrop-blur-md rounded-3xl p-5 sm:p-6 shadow-2xl shadow-sky-100/80 border-2 border-sky-300 ring-4 ring-sky-50 transition-all duration-300 relative">
+
+          <!-- Card Header: Sapaan & Status Badge -->
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+            <div>
+              <h2 class="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                <span>👋 Selamat Datang di SI-CAKAP!</span>
+              </h2>
+              <p class="text-xs text-slate-500 font-medium">Pilih peranmu untuk mulai masuk ke sistem:</p>
+            </div>
+            <span id="role-badge-status" class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-mono text-[11px] font-black border border-emerald-300 flex items-center gap-1.5 shrink-0">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>🟢 Online</span>
+            </span>
+          </div>
+
+          <!-- 4 Tab Pemilih Peran (Ceria & Dinamis) -->
+          <div class="space-y-1 mb-4">
+            <div class="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-2xl text-center text-xs font-bold">
+              <button type="button" id="tab-btn-murid" onclick="selectRole('murid')" class="py-2 px-1 rounded-xl bg-sky-500 text-white shadow-md shadow-sky-500/25 font-black transition cursor-pointer">
+                🎒 Murid
+              </button>
+              <button type="button" id="tab-btn-guru" onclick="selectRole('guru')" class="py-2 px-1 rounded-xl text-slate-600 hover:text-slate-900 font-bold transition cursor-pointer">
+                👩‍🏫 Guru
+              </button>
+              <button type="button" id="tab-btn-admin" onclick="selectRole('admin')" class="py-2 px-1 rounded-xl text-slate-600 hover:text-slate-900 font-bold transition cursor-pointer">
+                🏫 Admin
+              </button>
+              <button type="button" id="tab-btn-superadmin" onclick="selectRole('superadmin')" class="py-2 px-1 rounded-xl text-slate-600 hover:text-slate-900 font-bold transition cursor-pointer">
+                🛡️ Superadmin
+              </button>
+            </div>
+          </div>
+
+          <!-- ================= TAMPILAN SAAT TAB [🎒 Murid] AKTIF ================= -->
+          <form id="form-murid" onsubmit="handleMuridSubmit(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">🪪 Nomor Peserta / NISN</label>
+              <div class="relative">
+                <i data-lucide="user-check" class="w-4 h-4 text-sky-500 absolute left-3.5 top-3"></i>
+                <input type="text" id="murid-nisn" required placeholder="Contoh: 0084928192" 
+                  class="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100 transition" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">🔑 Kata Sandi</label>
+              <div class="relative">
+                <i data-lucide="key" class="w-4 h-4 text-sky-500 absolute left-3.5 top-3"></i>
+                <input type="password" id="murid-pwd" required placeholder="••••••••••" 
+                  class="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100 transition" />
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-bold text-slate-700">🎟️ Token Ujian (6 Huruf/Angka)</label>
+              </div>
+              <div class="relative">
+                <i data-lucide="ticket" class="w-4 h-4 text-sky-500 absolute left-3.5 top-3"></i>
+                <input type="text" id="murid-token" maxlength="6" required placeholder="C K P 2 6 A" 
+                  class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 font-mono text-sm uppercase tracking-widest font-black text-sky-800 bg-sky-50/50 focus:bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-100 focus:outline-none transition" />
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-3 rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 active:scale-[0.99] text-white font-black text-xs sm:text-sm tracking-wide shadow-md shadow-sky-500/25 flex items-center justify-center gap-2 transition duration-200 cursor-pointer mt-1">
+              <span>🚀 MULAI KERJAKAN UJIAN SEKARANG -&gt;</span>
+            </button>
+          </form>
+
+          <!-- ================= TAMPILAN SAAT TAB [👩‍🏫 Guru / 🏫 Admin / 🛡️ Superadmin] AKTIF ================= -->
+          <form id="form-staff" onsubmit="handleStaffSubmit(event)" class="space-y-3 hidden">
+            <!-- Info Tugas Singkat 1 Baris Sesuai Tab -->
+            <div id="staff-info-box" class="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs flex items-center gap-2.5">
+              <span id="staff-info-icon" class="text-base shrink-0">📌</span>
+              <p class="text-xs text-slate-700 font-semibold leading-snug" id="staff-info-desc">
+                Tugas: Buat bank soal ujian ramah SD, pantau pengerjaan murid secara live, &amp; rekap nilai otomatis.
+              </p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">📧 Username / Email</label>
+              <div class="relative">
+                <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+                <input type="text" id="staff-username" required placeholder="Username atau email resmi..." 
+                  class="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 transition" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">🔑 Kata Sandi</label>
+              <div class="relative">
+                <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+                <input type="password" id="staff-password" required placeholder="••••••••••" 
+                  class="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 transition" />
+              </div>
+            </div>
+
+            <button type="submit" id="staff-submit-btn" class="w-full py-3 rounded-2xl text-white font-black text-xs sm:text-sm tracking-wide shadow-md flex items-center justify-center gap-2 transition duration-200 cursor-pointer mt-1">
+              <span id="staff-submit-text">🔓 MASUK KE DASHBOARD -&gt;</span>
+            </button>
+          </form>
+
+          <!-- Feedback Notification Banner -->
+          <div id="login-feedback" class="hidden mt-3 p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2">
+            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+            <span id="feedback-text" class="font-bold">✨ Verifikasi Berhasil! Menyiapkan ruang ujian...</span>
+          </div>
+
+          <!-- Pendaftaran Sekolah Baru (Ramah & Terbuka) -->
+          <div class="mt-4 pt-3 border-t border-slate-100 text-center">
+            <p class="text-xs text-slate-600 font-semibold">
+              Belum punya akun sekolah? 
+              <button type="button" onclick="openRegisterSchoolModal()" class="font-black text-sky-600 hover:text-sky-700 hover:underline inline-flex items-center gap-1 ml-1 cursor-pointer">
+                <span>🏫 + Daftarkan SD Baru</span>
+              </button>
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ================= COMPACT 1-SCREEN FOOTER ================= -->
+  <footer class="shrink-0 py-2 sm:py-2.5 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-1.5 border-t border-sky-100/80 z-20">
+    <div class="flex items-center gap-2">
+      <span class="font-black text-slate-700">© 2026 SI-CAKAP SD</span>
+      <span>•</span>
+      <span class="text-slate-500 font-medium">Platform Asesmen Ceria &amp; Ramah Anak Sekolah Dasar</span>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 font-bold text-[11px]">
+      <a href="pages/fitur.html" class="hover:text-sky-600 transition">✨ Fitur</a>
+      <span>•</span>
+      <a href="pages/kompatibilitas.html" class="hover:text-sky-600 transition">💻 Perangkat</a>
+      <span>•</span>
+      <a href="pages/rbac.html" class="hover:text-purple-600 transition">📋 Akses Peran</a>
+      <span>•</span>
+      <a href="pages/alur.html" class="hover:text-emerald-600 transition">📖 Panduan SD</a>
+      <span>•</span>
+      <span class="text-emerald-600 flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+        <span>🟢 Sistem Siap</span>
+      </span>
+    </div>
+  </footer>
+
+  <!-- ================= MODAL PENDAFTARAN SEKOLAH DASAR (SD/MI) BARU ================= -->
+  <div id="modal-register-school" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative border border-sky-100 animate-in fade-in zoom-in-95 duration-200">
+      
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+            <i data-lucide="school" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-slate-900">Pendaftaran SD/MI Baru</h3>
+            <p class="text-[11px] text-slate-500 font-medium">Daftarkan institusi Sekolah Dasar ke SI-CAKAP</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRegisterSchoolModal()" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+        <span class="text-base shrink-0">⏳</span>
+        <p class="text-[11px] text-amber-800 leading-snug font-medium">
+          Pengajuan akan diverifikasi oleh Superadmin sebelum akun admin sekolah aktif.
+        </p>
+      </div>
+
+      <form onsubmit="handleRegisterSchoolSubmit(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nama Resmi Sekolah Dasar (SD/MI)</label>
+          <input type="text" id="reg-school-name" required placeholder="Contoh: SDN 1 Nusantara" 
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-400" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">NPSN (8 Digit)</label>
+            <input type="text" id="reg-school-npsn" required maxlength="8" pattern="[0-9]{8}" placeholder="20104567" 
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-black text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-400" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Jenjang</label>
+            <select id="reg-school-jenjang" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-400">
+              <option value="SD Negeri" selected>SD Negeri</option>
+              <option value="SD Swasta">SD Swasta / IT</option>
+              <option value="MI">MI</option>
+              <option value="SDLB">SDLB</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Email Resmi Admin / Guru SD</label>
+          <input type="email" id="reg-school-email" required placeholder="admin@sdn1nusantara.sch.id" 
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-400" />
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeRegisterSchoolModal()" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer">
+            Batal
+          </button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black shadow-md shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+            <span>Kirim Pengajuan</span>
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 translate-y-20 opacity-0">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+    <span id="toast-message">Operasi berhasil!</span>
+  </div>
+
+  <!-- ================= SCRIPT: AUTHENTICATION & MULTI-PAGE REDIRECTS ================= -->
+  <script>
+    // Toggle Mobile Menu
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      if (menu) menu.classList.toggle('hidden');
+    }
+
+    // Role Theme & Configuration Map
+    let currentRole = 'murid';
+
+    const roleThemes = {
+      murid: {
+        cardBorder: 'border-sky-300 ring-4 ring-sky-100/50',
+        tabBtnClass: 'py-2 px-1 rounded-xl bg-sky-500 text-white shadow-md shadow-sky-500/25 font-black transition cursor-pointer',
+        badgeClass: 'px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-mono text-[11px] font-black border border-emerald-300 flex items-center gap-1.5 shrink-0',
+        badgeHtml: '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>🟢 Online</span>'
+      },
+      guru: {
+        cardBorder: 'border-emerald-300 ring-4 ring-emerald-100/50',
+        tabBtnClass: 'py-2 px-1 rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/25 font-black transition cursor-pointer',
+        badgeClass: 'px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-mono text-[11px] font-black border border-emerald-300 flex items-center gap-1.5 shrink-0',
+        badgeHtml: '<span>👩‍🏫 Guru SD</span>',
+        infoIcon: '📌',
+        infoDesc: 'Tugas: Buat bank soal ujian ramah SD, pantau pengerjaan murid secara live, & rekap nilai otomatis.',
+        infoClass: 'p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs flex items-center gap-2.5',
+        btnClass: 'w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-[0.99] text-white font-black text-xs sm:text-sm tracking-wide shadow-md shadow-emerald-500/25 flex items-center justify-center gap-2 transition duration-200 cursor-pointer mt-1',
+        btnText: '🔓 MASUK KE DASHBOARD GURU ->',
+        redirectUrl: 'pages/guru-dashboard.html',
+        loadingMsg: '✨ Akses Guru SD Terverifikasi! Membuka Ruang Kerja Guru...'
+      },
+      admin: {
+        cardBorder: 'border-indigo-300 ring-4 ring-indigo-100/50',
+        tabBtnClass: 'py-2 px-1 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25 font-black transition cursor-pointer',
+        badgeClass: 'px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 font-mono text-[11px] font-black border border-indigo-300 flex items-center gap-1.5 shrink-0',
+        badgeHtml: '<span>🏫 Admin SD</span>',
+        infoIcon: '📌',
+        infoDesc: 'Tugas: Kelola data siswa kelas 1-6, akun guru, jadwal asesmen, & pengaturan sekolah.',
+        infoClass: 'p-2.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs flex items-center gap-2.5',
+        btnClass: 'w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 active:scale-[0.99] text-white font-black text-xs sm:text-sm tracking-wide shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition duration-200 cursor-pointer mt-1',
+        btnText: '🔓 MASUK KE DASHBOARD ADMIN ->',
+        redirectUrl: 'pages/admin-dashboard.html',
+        loadingMsg: '✨ Otorisasi Admin SD Terverifikasi! Membuka Dashboard Admin...'
+      },
+      superadmin: {
+        cardBorder: 'border-amber-400 ring-4 ring-amber-100/50',
+        tabBtnClass: 'py-2 px-1 rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/25 font-black transition cursor-pointer',
+        badgeClass: 'px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-mono text-[11px] font-black border border-amber-300 flex items-center gap-1.5 shrink-0',
+        badgeHtml: '<span>🛡️ Superadmin</span>',
+        infoIcon: '📌',
+        infoDesc: 'Tugas: Persetujuan pendaftaran institusi SD/MI baru & pemantauan platform nasional.',
+        infoClass: 'p-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs flex items-center gap-2.5',
+        btnClass: 'w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-[0.99] text-white font-black text-xs sm:text-sm tracking-wide shadow-md shadow-amber-500/25 flex items-center justify-center gap-2 transition duration-200 cursor-pointer mt-1',
+        btnText: '🔓 MASUK KE DASHBOARD SUPERADMIN ->',
+        redirectUrl: 'pages/superadmin-dashboard.html',
+        loadingMsg: '✨ Otorisasi Superadmin Terverifikasi! Membuka Portal Persetujuan Sekolah...'
+      }
+    };
+
+    // Dinamis Ganti Peran (Role Switcher)
+    function selectRole(role) {
+      currentRole = role;
+      const roles = ['murid', 'guru', 'admin', 'superadmin'];
+      const formMurid = document.getElementById('form-murid');
+      const formStaff = document.getElementById('form-staff');
+      const loginCard = document.getElementById('login-card');
+      const badgeStatus = document.getElementById('role-badge-status');
+
+      // Update Tab Buttons
+      roles.forEach(r => {
+        const btn = document.getElementById(`tab-btn-${r}`);
+        if (btn) {
+          if (r === role) {
+            btn.className = roleThemes[r].tabBtnClass;
+          } else {
+            btn.className = 'py-2 px-1 rounded-xl text-slate-600 hover:text-slate-900 font-bold transition cursor-pointer';
+          }
+        }
+      });
+
+      // Update Login Card Border & Ring
+      const theme = roleThemes[role];
+      loginCard.className = `bg-white/95 backdrop-blur-md rounded-3xl p-5 sm:p-6 shadow-2xl shadow-sky-100/80 border-2 ${theme.cardBorder} transition-all duration-300 relative`;
+      
+      // Update Role Status Badge
+      badgeStatus.className = theme.badgeClass;
+      badgeStatus.innerHTML = theme.badgeHtml;
+
+      if (role === 'murid') {
+        formMurid.classList.remove('hidden');
+        formStaff.classList.add('hidden');
+      } else {
+        formMurid.classList.add('hidden');
+        formStaff.classList.remove('hidden');
+
+        document.getElementById('staff-info-icon').textContent = theme.infoIcon;
+        document.getElementById('staff-info-desc').textContent = theme.infoDesc;
+        document.getElementById('staff-info-box').className = theme.infoClass;
+        document.getElementById('staff-submit-btn').className = theme.btnClass;
+        document.getElementById('staff-submit-text').textContent = theme.btnText;
+      }
+
+      lucide.createIcons();
+    }
+
+    // ================= REDIRECT HANDLER TAB [ MURID ] -> pages/exam-room.html =================
+    async function handleMuridSubmit(e) {
+      e.preventDefault();
+      const nisn = document.getElementById('murid-nisn').value.trim();
+      const password = document.getElementById('murid-pwd').value.trim();
+      const token = document.getElementById('murid-token').value.trim().toUpperCase();
+      const feedback = document.getElementById('login-feedback');
+      const text = document.getElementById('feedback-text');
+
+      if (!nisn || !password) {
+        showToast('❌ Mohon masukkan NISN dan Kata Sandi.');
+        return;
+      }
+
+      if (!token) {
+        showToast('❌ Mohon masukkan Token Ujian 6 Karakter.');
+        return;
+      }
+
+      feedback.classList.remove('hidden');
+      text.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><strong>Memverifikasi peserta ujian ke Supabase...</strong>';
+
+      try {
+        if (!window.supabase) {
+          throw new Error('Koneksi Supabase belum siap');
+        }
+
+        const email = `${nisn}@siswa.sicakap.id`;
+        const { data, error } = await window.supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+
+        if (error || !data?.user) {
+          throw new Error(error?.message || 'Nomor peserta (NISN) atau kata sandi tidak valid.');
+        }
+
+        const { data: profile, error: profErr } = await window.supabase
+          .from('profiles')
+          .select('id, school_id, role, full_name, identifier, class_name, is_active')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profErr || !profile) {
+          await window.supabase.auth.signOut();
+          throw new Error('Data profil siswa tidak ditemukan di sistem.');
+        }
+
+        if (!profile.is_active) {
+          await window.supabase.auth.signOut();
+          throw new Error('Akun siswa Anda dinonaktifkan. Hubungi admin sekolah.');
+        }
+
+        sessionStorage.setItem('sicakap_active_role', profile.role || 'siswa');
+        sessionStorage.setItem('sicakap_nisn', nisn);
+        sessionStorage.setItem('sicakap_token', token);
+        sessionStorage.setItem('sicakap_name', profile.full_name || 'Siswa');
+        sessionStorage.setItem('sicakap_rombel', profile.class_name || 'SD');
+
+        const destination = (window.ROLE_DASHBOARD_MAP && window.ROLE_DASHBOARD_MAP[profile.role]) || 'pages/exam-room.html';
+        text.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 inline mr-1"></i><strong>✨ Verifikasi Berhasil! Menyiapkan ruang ujian untuk ${profile.full_name}...</strong>`;
+        lucide.createIcons();
+
+        setTimeout(() => {
+          window.location.href = destination;
+        }, 400);
+      } catch (err) {
+        feedback.classList.add('hidden');
+        showToast(`❌ Login gagal: ${err.message || 'Verifikasi siswa gagal'}`);
+      }
+    }
+
+    // ================= REDIRECT HANDLER TAB [ GURU / ADMIN / SUPERADMIN ] =================
+    async function handleStaffSubmit(e) {
+      e.preventDefault();
+      const feedback = document.getElementById('login-feedback');
+      const text = document.getElementById('feedback-text');
+      const theme = roleThemes[currentRole];
+      const username = (document.getElementById('staff-username')?.value || '').trim();
+      const password = (document.getElementById('staff-password')?.value || '').trim();
+      const submitBtn = document.getElementById('staff-submit-btn');
+
+      if (!theme) return;
+      if (!username || !password) {
+        showToast('❌ Mohon masukkan username/email dan kata sandi.');
+        return;
+      }
+
+      if (submitBtn) submitBtn.disabled = true;
+      feedback.classList.remove('hidden');
+      text.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><strong>Memverifikasi kredensial ke Supabase Auth...</strong>';
+
+      try {
+        if (!window.supabase) {
+          throw new Error('Koneksi database Supabase belum terinisialisasi.');
+        }
+
+        const email = username;
+        const { data, error } = await window.supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+
+        if (error || !data?.user) {
+          throw new Error(error?.message || 'Email atau kata sandi salah.');
+        }
+
+        const { data: profile, error: profErr } = await window.supabase
+          .from('profiles')
+          .select('id, school_id, role, full_name, identifier, is_active')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profErr || !profile) {
+          await window.supabase.auth.signOut();
+          throw new Error('Data profil pengguna tidak ditemukan di database.');
+        }
+
+        if (!profile.is_active) {
+          await window.supabase.auth.signOut();
+          throw new Error('Akun Anda sedang dinonaktifkan oleh Administrator.');
+        }
+
+        const roleKey = profile.role;
+        const destination = (window.ROLE_DASHBOARD_MAP && window.ROLE_DASHBOARD_MAP[roleKey]) || theme.redirectUrl;
+        sessionStorage.setItem('sicakap_active_role', roleKey);
+        sessionStorage.setItem('sicakap_name', profile.full_name);
+
+        text.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 inline mr-1"></i><strong>✨ Otorisasi Supabase Berhasil (${roleKey})! Mengalihkan...</strong>`;
+        lucide.createIcons();
+
+        setTimeout(() => {
+          window.location.href = destination;
+        }, 400);
+      } catch (err) {
+        if (submitBtn) submitBtn.disabled = false;
+        feedback.classList.add('hidden');
+        showToast(`❌ Login gagal: ${err.message || 'Autentikasi gagal'}`);
+      }
+    }
+
+    // ================= MODAL PENDAFTARAN SEKOLAH BARU =================
+    function openRegisterSchoolModal() {
+      document.getElementById('modal-register-school').classList.remove('hidden');
+    }
+
+    function closeRegisterSchoolModal() {
+      document.getElementById('modal-register-school').classList.add('hidden');
+    }
+
+    async function handleRegisterSchoolSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('reg-school-name').value.trim();
+      const npsn = document.getElementById('reg-school-npsn').value.trim();
+      const email = document.getElementById('reg-school-email').value.trim();
+      const jenjang = document.getElementById('reg-school-jenjang').value;
+
+      try {
+        if (window.supabase) {
+          const { error } = await window.supabase
+            .from('schools')
+            .insert([{ name, npsn, jenjang, is_active: false }]);
+          if (error) throw error;
+        }
+
+        closeRegisterSchoolModal();
+        document.getElementById('reg-school-name').value = '';
+        document.getElementById('reg-school-npsn').value = '';
+        document.getElementById('reg-school-email').value = '';
+
+        showToast(`✅ Pendaftaran "${name}" berhasil dikirim! Menunggu Approval Superadmin.`);
+      } catch (err) {
+        closeRegisterSchoolModal();
+        showToast(`Pendaftaran dikirim: ${err.message || 'Menunggu verifikasi'}`);
+      }
+    }
+
+    // Toast Notification
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const text = document.getElementById('toast-message');
+      if (text) text.textContent = msg;
+      if (toast) {
+        toast.classList.remove('translate-y-20', 'opacity-0');
+        setTimeout(() => {
+          toast.classList.add('translate-y-20', 'opacity-0');
+        }, 3500);
+      }
+    }
+
+    // Initialize Icons and URL Check on DOMContentLoaded
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const reason = urlParams.get('reason');
+      if (reason === 'unauthenticated') {
+        showToast('⚠️ Sesi login diperlukan untuk mengakses halaman.');
+      } else if (reason === 'unauthorized') {
+        showToast('⛔ Akses ditolak: Anda tidak memiliki izin untuk membuka dashboard tersebut.');
+      }
+    });
+  </script>
+</body>
+</html>

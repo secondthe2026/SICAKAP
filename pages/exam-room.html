@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Ruang Ujian CBT | SI-CAKAP v2.0</title>
+  <meta name="description" content="Ruang Ujian Komputer Berbasis Kompetensi Akademik (CBT) SI-CAKAP dengan Deteksi Pindah Tab & Auto-Save IndexedDB." />
+
+  <!-- Google Fonts: Nunito, Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Nunito:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Local Tailwind CSS Build -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Tailwind CSS CDN -->
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Impeccable LocalStorage Data Persistence Layer -->
+  <script src="/assets/js/sicakap-db.js"></script>
+  <script type="module" src="/src/services/data-store.js"></script>
+  <!-- Route Guard & RBAC Session Enforcement -->
+  <script type="module">
+    import { requireRole } from '/src/lib/guard.js';
+    import { CBTEngine } from '/src/engines/cbt-engine.js';
+    import { renderQuestion } from '/src/engines/question-renderer.js';
+    import { initExamAccessibility, renderQuestionNav, hasFilledAnswer } from '/src/engines/accessibility.js';
+
+    requireRole(['siswa', 'proktor', 'guru', 'admin_sekolah', 'superadmin']);
+
+    // State Lokal UI
+    let engine = null;
+    let activeQuestionIndex = 0;
+    let totalQuestionsCount = 0;
+    let activeAllAnswers = {};
+
+    // Inisialisasi CBTEngine dengan Hooks UI
+    engine = new CBTEngine({
+      onSyncStatus: (status) => {
+        updateSyncBadge(status);
+      },
+      onTimerTick: ({ formatted, remainingSec }) => {
+        const timerEl = document.getElementById('exam-timer');
+        const timerBox = document.getElementById('timer-box');
+        if (timerEl) timerEl.textContent = formatted;
+        if (remainingSec <= 300) {
+          timerBox?.classList.remove('bg-slate-900', 'text-amber-400');
+          timerBox?.classList.add('bg-rose-600', 'text-white', 'animate-pulse');
+        }
+      },
+      onRenderQuestion: ({ index, total, question, savedAnswer, isFlagged, allAnswers }) => {
+        activeQuestionIndex = index;
+        totalQuestionsCount = total;
+        activeAllAnswers = allAnswers || {};
+
+        // 1. Subheader info
+        const badgeNum = document.getElementById('badge-question-num');
+        if (badgeNum) badgeNum.textContent = `SOAL NO. ${index + 1}`;
+        const drawerCounter = document.getElementById('drawer-counter');
+        if (drawerCounter) drawerCounter.textContent = `${index + 1}/${total}`;
+        const totalEl = document.getElementById('total-question-text');
+        if (totalEl) totalEl.textContent = `${total} Soal`;
+        const compBadge = document.getElementById('competency-badge');
+        if (compBadge) {
+          compBadge.textContent = question.competency ? `Capaian: ${question.competency}` : 'Kompetensi Akademik SD';
+        }
+
+        // 2. Render question card via QuestionRenderer
+        const cardContainer = document.getElementById('active-question-card');
+        if (cardContainer) {
+          renderQuestion({
+            container: cardContainer,
+            question,
+            savedAnswer: savedAnswer?.answer_payload || savedAnswer || {},
+            onChange: (payload) => {
+              engine.recordAnswer(payload);
+            }
+          });
+        }
+
+        // 3. Navigation Grids & Progress
+        updateNavGrids(index, activeAllAnswers);
+
+        // 4. Doubt / Ragu-ragu status UI
+        updateDoubtUI(isFlagged);
+
+        // 5. Prev / Next buttons
+        updateNavButtons(index, total);
+
+        lucide.createIcons();
+      },
+      onProgressUpdate: (allAnswers) => {
+        activeAllAnswers = allAnswers || {};
+        updateNavGrids(activeQuestionIndex, activeAllAnswers);
+      },
+      onViolation: ({ eventType, count, maxAllowed }) => {
+        const modal = document.getElementById('tab-warning-modal');
+        const countEl = document.getElementById('tab-warning-count');
+        if (countEl) countEl.textContent = `Peringatan Ke-${count} dari Maksimal ${maxAllowed} Kali`;
+        if (modal) modal.classList.remove('hidden');
+        lucide.createIcons();
+      },
+      onSubmitting: ({ autoSubmit, reason }) => {
+        const finishModal = document.getElementById('finish-modal');
+        if (finishModal) finishModal.classList.add('hidden');
+      },
+      onSubmitSuccess: (receiptData) => {
+        const studentEl = document.getElementById('success-student-name');
+        if (studentEl) studentEl.textContent = receiptData.studentName;
+        const receiptEl = document.getElementById('success-receipt-num');
+        if (receiptEl) receiptEl.textContent = receiptData.receipt_number;
+        lucide.createIcons();
+      },
+      onSubmitError: (errMsg) => {
+        alert('Gagal mengirim ujian: ' + errMsg + '. Koneksi sedang dicek ulang...');
+      }
+    });
+
+    window.engine = engine;
+
+    // ================= 1. SYNC BADGE HANDLER =================
+    function updateSyncBadge(status) {
+      const badge = document.getElementById('sync-status-badge');
+      const text = document.getElementById('sync-status');
+      const dot = document.getElementById('sync-indicator-dot');
+      if (!badge || !text) return;
+
+      if (status === 'online') {
+        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+        text.textContent = '🟢 Online';
+      } else if (status === 'syncing') {
+        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold transition-all';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-ping';
+        text.textContent = '⚡ Menyimpan...';
+      } else if (status === 'offline') {
+        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        text.textContent = '🔴 Offline (Tersimpan Lokal)';
+      } else {
+        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        text.textContent = '⚠️ Gagal Sync';
+      }
+    }
+
+    // ================= 2. UPDATE NAVIGATION GRIDS =================
+    function updateNavGrids(currentIndex, allAnswers) {
+      const questionsList = engine.questions || [];
+      const desktopContainer = document.getElementById('desktop-grid');
+      const mobileContainer = document.getElementById('mobile-grid');
+
+      if (desktopContainer) {
+        renderQuestionNav({
+          container: desktopContainer,
+          questions: questionsList,
+          currentIndex,
+          allAnswers,
+          onSelect: (idx) => engine.goTo(idx)
+        });
+      }
+
+      if (mobileContainer) {
+        renderQuestionNav({
+          container: mobileContainer,
+          questions: questionsList,
+          currentIndex,
+          allAnswers,
+          onSelect: (idx) => {
+            engine.goTo(idx);
+            window.closeMobileDrawer?.();
+          }
+        });
+      }
+
+      // Progress count
+      let filledCount = 0;
+      questionsList.forEach((q) => {
+        const ans = allAnswers[q.id];
+        if (hasFilledAnswer(q.type, ans?.answer_payload)) filledCount++;
+      });
+      const progressEl = document.getElementById('progress-indicator');
+      if (progressEl) {
+        progressEl.textContent = `${filledCount}/${questionsList.length} Terisi`;
+      }
+    }
+
+    // ================= 3. UPDATE DOUBT / RAGU-RAGU UI =================
+    function updateDoubtUI(isFlagged) {
+      const bottomBtn = document.getElementById('btn-doubt');
+      const bottomText = document.getElementById('doubt-text');
+      const headerBtn = document.getElementById('header-btn-doubt');
+      const headerLabel = document.getElementById('header-doubt-label');
+
+      if (isFlagged) {
+        if (bottomBtn) bottomBtn.className = 'h-12 px-3.5 sm:px-6 rounded-2xl border-2 border-amber-500 bg-amber-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 cursor-pointer';
+        if (bottomText) bottomText.textContent = '✓ Ditandai Ragu';
+        if (headerBtn) headerBtn.className = 'px-2.5 py-1 rounded-xl border border-amber-500 bg-amber-500 text-white text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs';
+        if (headerLabel) headerLabel.textContent = 'Ragu (Aktif)';
+      } else {
+        if (bottomBtn) bottomBtn.className = 'h-12 px-3.5 sm:px-6 rounded-2xl border-2 border-amber-300 hover:border-amber-400 bg-amber-50 text-amber-800 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-2xs hover:bg-amber-100/70 transition active:scale-95 cursor-pointer';
+        if (bottomText) bottomText.textContent = '🤔 Masih Ragu';
+        if (headerBtn) headerBtn.className = 'px-2.5 py-1 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs';
+        if (headerLabel) headerLabel.textContent = 'Ragu-ragu';
+      }
+    }
+
+    // ================= 4. PREV / NEXT BUTTON STATES =================
+    function updateNavButtons(index, total) {
+      const prevBtn = document.getElementById('btn-prev');
+      const nextBtn = document.getElementById('btn-next');
+      const nextText = document.getElementById('next-text');
+
+      if (index === 0) {
+        prevBtn.disabled = true;
+        prevBtn.classList.add('opacity-40', 'cursor-not-allowed');
+      } else {
+        prevBtn.disabled = false;
+        prevBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+      }
+
+      if (index === total - 1) {
+        nextText.textContent = '✅ Selesai & Kumpulkan';
+        nextBtn.className = 'h-12 px-4 sm:px-7 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-95 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-emerald-500/25 transition cursor-pointer';
+      } else {
+        nextText.textContent = 'Soal Berikutnya ➡';
+        nextBtn.className = 'h-12 px-4 sm:px-7 rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 active:scale-95 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-sky-500/25 transition cursor-pointer';
+      }
+    }
+
+    // ================= 5. GLOBAL ACTIONS =================
+    window.prevQuestion = () => engine.goTo(activeQuestionIndex - 1);
+    window.nextQuestion = () => {
+      if (activeQuestionIndex === totalQuestionsCount - 1) {
+        openFinishModal();
+      } else {
+        engine.goTo(activeQuestionIndex + 1);
+      }
+    };
+    window.toggleDoubt = () => engine.toggleFlag();
+
+    // ================= 6. FINISH EXAM MODAL =================
+    function openFinishModal() {
+      const modal = document.getElementById('finish-modal');
+      const questionsList = engine.questions || [];
+      const answersObj = engine.sync?.getAllAnswers() || {};
+      let answered = 0;
+      let doubt = 0;
+
+      questionsList.forEach(q => {
+        const ans = answersObj[q.id];
+        if (ans?.is_flagged) doubt++;
+        if (hasFilledAnswer(q.type, ans?.answer_payload)) {
+          answered++;
+        }
+      });
+
+      const unanswered = Math.max(0, questionsList.length - answered);
+
+      document.getElementById('recap-answered').textContent = answered;
+      document.getElementById('recap-doubt').textContent = doubt;
+      document.getElementById('recap-unanswered').textContent = unanswered;
+
+      if (modal) modal.classList.remove('hidden');
+      lucide.createIcons();
+    }
+    window.openFinishModal = openFinishModal;
+
+    window.dismissFinishModal = () => {
+      document.getElementById('finish-modal')?.classList.add('hidden');
+    };
+
+    window.submitExamFinal = () => {
+      engine.finishExam();
+    };
+
+    // ================= 7. MOBILE DRAWER & FULLSCREEN =================
+    window.toggleMobileDrawer = () => {
+      document.getElementById('mobile-drawer')?.classList.toggle('hidden');
+      lucide.createIcons();
+    };
+
+    window.closeMobileDrawer = () => {
+      document.getElementById('mobile-drawer')?.classList.add('hidden');
+    };
+
+    window.toggleFullscreen = () => {
+      engine.requestFullscreen();
+    };
+
+    window.dismissTabWarning = () => {
+      document.getElementById('tab-warning-modal')?.classList.add('hidden');
+    };
+
+    window.unlockByProktor = () => {
+      const pin = document.getElementById('proktor-pin')?.value.trim();
+      const errEl = document.getElementById('pin-error');
+      if (pin === '1234') {
+        document.getElementById('exam-locked-modal')?.classList.add('hidden');
+        if (errEl) errEl.classList.add('hidden');
+        engine.violationCount = 0;
+      } else {
+        if (errEl) errEl.classList.remove('hidden');
+      }
+    };
+
+    // ================= 8. PRINT RECEIPT BUTTON =================
+    const printBtn = document.getElementById('btn-print-receipt');
+    if (printBtn) {
+      printBtn.onclick = () => engine.printReceipt();
+    }
+
+    // ================= 9. TOKEN MODAL & START =================
+    window.addEventListener('DOMContentLoaded', () => {
+      // Inisialisasi Accessibility Preferences (Font size scaling & High Contrast)
+      initExamAccessibility();
+
+      lucide.createIcons();
+
+      // Pre-fill student info
+      const studentName = sessionStorage.getItem('sicakap_name') || 'Ahmad Rizky Pratama';
+      const studentNisn = sessionStorage.getItem('sicakap_nisn') || '0084928192';
+      const examTitle = sessionStorage.getItem('sicakap_mapel') || 'Literasi & Numerasi SD (Fase C)';
+      const examDuration = (sessionStorage.getItem('sicakap_durasi') || '60') + ' Menit';
+      const initialToken = sessionStorage.getItem('sicakap_token') || 'CKP26A';
+
+      const nameEl = document.getElementById('student-name');
+      if (nameEl) nameEl.textContent = studentName;
+      const nisnEl = document.getElementById('student-nisn');
+      if (nisnEl) nisnEl.textContent = `NISN: ${studentNisn} • Kelas 5 SD`;
+      const mapelEl = document.getElementById('mapel-title');
+      if (mapelEl) mapelEl.textContent = examTitle;
+      const initialsEl = document.getElementById('user-initials');
+      if (initialsEl) {
+        initialsEl.textContent = studentName.split(' ').map(n => n[0]).slice(0, 2).join('');
+      }
+
+      const modName = document.getElementById('token-modal-student-name');
+      if (modName) modName.textContent = studentName;
+      const modNisn = document.getElementById('token-modal-student-nisn');
+      if (modNisn) modNisn.textContent = studentNisn;
+      const modTitle = document.getElementById('token-modal-exam-title');
+      if (modTitle) modTitle.textContent = examTitle;
+      const modDur = document.getElementById('token-modal-exam-duration');
+      if (modDur) modDur.textContent = examDuration;
+      const tokenInput = document.getElementById('input-token-code');
+      if (tokenInput) tokenInput.value = initialToken;
+
+      const startBtn = document.getElementById('btn-start-exam');
+      if (startBtn) {
+        startBtn.onclick = async () => {
+          const tokenVal = (tokenInput?.value || '').trim().toUpperCase();
+          const errEl = document.getElementById('token-error-msg');
+
+          if (!tokenVal) {
+            if (errEl) {
+              errEl.textContent = '❌ Mohon masukkan 6 karakter Token Ujian.';
+              errEl.classList.remove('hidden');
+            }
+            return;
+          }
+
+          startBtn.disabled = true;
+          startBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⏳</span> Memulai ruang ujian...';
+
+          try {
+            await engine.requestFullscreen();
+            await engine.boot({
+              examId: '00000000-0000-0000-0000-000000000001',
+              tokenCode: tokenVal
+            });
+            document.getElementById('modal-token-entry')?.classList.add('hidden');
+          } catch (err) {
+            console.error('[SICAKAP Boot Error]:', err);
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<span>🚀 MULAI KERJAKAN UJIAN SEKARANG (FULLSCREEN)</span>';
+            if (errEl) {
+              errEl.textContent = '❌ ' + (err.message || 'Token Ujian salah atau sesi gagal dimulai.');
+              errEl.classList.remove('hidden');
+            }
+          }
+        };
+      }
+    });
+  </script>
+</body>
+</html>

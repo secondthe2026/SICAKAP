@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Skala Ukuran Huruf Ramah Siswa SD */
+body.font-size-small  { font-size: 14px; }
+body.font-size-normal { font-size: 16px; }
+body.font-size-large  { font-size: 19px; line-height: 1.75; }
+
+/* Tabel di dalam Stimulus Soal */
+.prose-stimulus table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  background: #ffffff;
+}
+.prose-stimulus th, .prose-stimulus td {
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+}
+.prose-stimulus th { background: #f1f5f9; font-weight: 700; }
+
+/* Mode Kontras Tinggi (WCAG AAA) */
+body.high-contrast {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+body.high-contrast .stimulus-box,
+body.high-contrast .akm-option,
+body.high-contrast table,
+body.high-contrast select,
+body.high-contrast input[type="text"] {
+  background-color: #111111 !important;
+  color: #ffff00 !important;
+  border-color: #ffffff !important;
+}
+body.high-contrast .prompt-box {
+  color: #ffffff !important;
+}

@@ -1,0 +1,3589 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Command Center Administrator SD | SI-CAKAP SD/MI</title>
+  <meta name="description" content="Dashboard Sentralisasi Administrator Sekolah Dasar (SD/MI) SI-CAKAP - Kendali Guru, Rombel Kelas 1-6 SD, Jadwal Ulangan, & Live Score CBT." />
+
+  <!-- Google Fonts: Nunito & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Nunito:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Local Tailwind CSS Build -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Tailwind CSS CDN -->
+  <!-- Impeccable LocalStorage Data Persistence Layer -->
+  <script src="/assets/js/sicakap-db.js"></script>
+  <script type="module" src="/src/services/data-store.js"></script>
+  <!-- Route Guard & RBAC Session Enforcement -->
+  <script type="module">
+    import { supabase, getCurrentUserProfile, signOutAndRedirect } from '/src/lib/supabase.js';
+    import { requireRole } from '/src/lib/guard.js';
+
+    window.supabase = supabase;
+    window.getCurrentUserProfile = getCurrentUserProfile;
+    window.signOutAndRedirect = signOutAndRedirect;
+
+    requireRole(['admin_sekolah', 'superadmin']);
+
+    // Hydrate live admin profile and school into Admin header
+    (async () => {
+      try {
+        const session = await getCurrentUserProfile();
+        if (session?.profile) {
+          const p = session.profile;
+          const schoolName = p.schools?.name || 'Sekolah';
+          const nameEl = document.getElementById('admin-header-name');
+          const emailEl = document.getElementById('admin-header-email');
+          const dropTitle = document.getElementById('dropdown-admin-title');
+          const dropEmail = document.getElementById('dropdown-admin-email');
+          const avatarEl = document.getElementById('admin-avatar-initials');
+
+          if (nameEl) nameEl.textContent = p.full_name || `Admin ${schoolName}`;
+          if (emailEl) emailEl.textContent = session.user?.email || '';
+          if (dropTitle) dropTitle.textContent = `Administrator SD • ${schoolName}`;
+          if (dropEmail) dropEmail.textContent = session.user?.email || '';
+          if (avatarEl) {
+            const initials = (p.full_name || 'ADM')
+              .split(' ')
+              .map(w => w[0])
+              .join('')
+              .substring(0, 3)
+              .toUpperCase();
+            avatarEl.textContent = initials || 'ADM';
+          }
+        }
+      } catch (err) {
+        console.warn('[Admin] Profile hydration error:', err);
+      }
+    })();
+  </script>
+
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS CDN for Real-Time Excel (.xlsx) Export -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <!-- Mammoth.js CDN for Client-Side Word (.docx) Parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <!-- SI-CAKAP Document Export & Print Engine -->
+  <script src="/assets/js/sicakap-export.js"></script>
+</head>
+<body class="h-full flex flex-col font-sans bg-slate-50 text-slate-900 antialiased overflow-hidden selection:bg-indigo-500 selection:text-white">
+
+  <!-- ================= TOP HEADER BAR ================= -->
+  <header class="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between z-30 shrink-0">
+    <!-- Left: Brand & Mobile Sidebar Toggle -->
+    <div class="flex items-center gap-3">
+      <button onclick="toggleMobileSidebar()" class="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100" aria-label="Buka Menu">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button>
+      <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center text-white shadow-md shadow-indigo-600/25">
+        <i data-lucide="shield-check" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-black text-lg tracking-tight text-slate-900">SI-CAKAP <span class="text-indigo-600">SD</span></span>
+          <span class="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+            ADMINISTRATOR SD
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-500 hidden sm:block">Command Center Terpusat • SD/MI Kelas 1 - 6</p>
+      </div>
+    </div>
+
+    <!-- Center: Supabase Live Cloud Status Badge -->
+    <div id="admin-persistence-bar" class="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs">
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span>🟢 Supabase Live Cloud</span>
+    </div>
+
+    <!-- Right: Quick Actions & Profile -->
+    <div class="flex items-center gap-3">
+      <button id="btn-header-livescore" onclick="switchTab('command')" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-black text-xs hover:bg-rose-100 transition cursor-pointer">
+        <i data-lucide="activity" class="w-4 h-4 text-rose-600 animate-pulse"></i>
+        <span>Live Score</span>
+      </button>
+
+      <!-- Interactive Admin Profile Dropdown Target -->
+      <div class="relative pl-3 border-l border-slate-200" id="admin-header-profile-container">
+        <button type="button" onclick="toggleAdminProfileMenu()" id="btn-admin-profile-toggle" class="flex items-center gap-2.5 p-1.5 -mr-1.5 rounded-2xl hover:bg-slate-100 transition cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-indigo-200" aria-expanded="false" aria-haspopup="true">
+          <div id="admin-avatar-initials" class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-600 to-indigo-800 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0 ring-2 ring-white">
+            ADM
+          </div>
+          <div class="hidden xl:block text-left">
+            <p id="admin-header-name" class="text-xs font-black text-slate-900 leading-tight">Admin SDN 1 Nusantara</p>
+            <p id="admin-header-email" class="text-[10px] text-slate-500 font-mono">admin@sdn1nusantara.sch.id</p>
+          </div>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 hidden xl:block"></i>
+        </button>
+
+        <!-- Dropdown Menu -->
+        <div id="admin-profile-dropdown" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 text-xs font-bold divide-y divide-slate-100 transition-all">
+          <div class="px-4 py-2.5 bg-slate-50/70">
+            <span class="text-[10px] uppercase font-black tracking-wider text-indigo-700">Otorisasi Level 1</span>
+            <p id="dropdown-admin-title" class="text-xs font-black text-slate-900">Administrator SD</p>
+            <p id="dropdown-admin-email" class="text-[10px] text-slate-500 font-mono truncate">admin@sdn1nusantara.sch.id</p>
+          </div>
+          <div class="py-1">
+            <button type="button" onclick="switchTab('profil'); closeAdminProfileMenu();" class="w-full px-4 py-2 text-left text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 cursor-pointer">
+              <i data-lucide="landmark" class="w-4 h-4 text-indigo-600"></i>
+              <span>🏛️ Profil Sekolah</span>
+            </button>
+            <button type="button" onclick="switchTab('akun'); closeAdminProfileMenu();" class="w-full px-4 py-2 text-left text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 cursor-pointer">
+              <i data-lucide="user-cog" class="w-4 h-4 text-slate-700"></i>
+              <span>⚙️ Pengaturan Akun</span>
+            </button>
+          </div>
+          <div class="py-1">
+            <a href="../index.html" class="w-full px-4 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 cursor-pointer" data-action="logout">
+              <i data-lucide="log-out" class="w-4 h-4"></i>
+              <span>Keluar / Logout</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN LAYOUT (Sidebar + Content) ================= -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside id="admin-sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between z-20 shrink-0 absolute lg:static inset-y-0 left-0 -translate-x-full lg:translate-x-0 transition-transform duration-200 shadow-xl lg:shadow-none">
+      <div class="p-4 space-y-5 overflow-y-auto">
+
+        <!-- Role Badge Card -->
+        <div class="p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-950 text-white space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-indigo-300 font-bold">Otorisasi Level 1</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          </div>
+          <p class="text-xs font-black">Kendali Administrator SD</p>
+          <p class="text-[11px] text-slate-300">Akses Penuh: Guru, Rombel, &amp; Jadwal</p>
+        </div>
+
+        <!-- Navigation Menu -->
+        <div class="space-y-1 text-xs font-bold text-slate-600">
+          <p class="px-3 text-[10px] uppercase font-black text-slate-400 tracking-wider mb-2">Utama</p>
+          
+          <button onclick="switchTab('overview')" id="nav-btn-overview" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 font-black transition cursor-pointer">
+            <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+            <span>Ringkasan &amp; Statistik</span>
+          </button>
+
+          <p class="px-3 text-[10px] uppercase font-black text-slate-400 tracking-wider pt-3 mb-2">Manajemen Akademik SD</p>
+
+          <!-- 1. Menu Data Guru (Hanya Admin yang bisa menambah guru) -->
+          <button onclick="switchTab('guru')" id="nav-btn-guru" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="users" class="w-4 h-4 text-teal-600"></i>
+            <span>👩‍🏫 Data Guru SD</span>
+            <span id="badge-count-guru" class="ml-auto px-1.5 py-0.2 rounded-full bg-teal-100 text-teal-800 text-[10px] font-black">0</span>
+          </button>
+
+          <!-- 2. Menu Manajemen Rombel -->
+          <button onclick="switchTab('rombel')" id="nav-btn-rombel" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="school" class="w-4 h-4 text-blue-600"></i>
+            <span>🏫 Manajemen Rombel</span>
+            <span id="badge-count-rombel" class="ml-auto px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black">0</span>
+          </button>
+
+          <!-- 3. Menu Data Siswa SD -->
+          <button onclick="switchTab('siswa')" id="nav-btn-siswa" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="backpack" class="w-4 h-4 text-emerald-600"></i>
+            <span>🎒 Data Siswa SD</span>
+            <span id="badge-count-siswa" class="ml-auto px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">0</span>
+          </button>
+
+          <!-- 4. Menu Jadwal Ulangan -->
+          <button onclick="switchTab('jadwal')" id="nav-btn-jadwal" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="calendar" class="w-4 h-4 text-amber-500"></i>
+            <span>📅 Jadwal Ulangan</span>
+            <span id="badge-count-jadwal" class="ml-auto px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">0</span>
+          </button>
+
+          <!-- 5. Menu Bank Soal SD -->
+          <button onclick="switchTab('soal')" id="nav-btn-soal" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="book-open" class="w-4 h-4 text-purple-600"></i>
+            <span>📝 Bank Soal SD</span>
+            <span id="badge-count-soal" class="ml-auto px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 text-[10px] font-black">0</span>
+          </button>
+
+          <p class="px-3 text-[10px] uppercase font-black text-slate-400 tracking-wider pt-3 mb-2">Monitoring Ujian</p>
+
+          <!-- 5. Menu Live Score -->
+          <button onclick="switchTab('command')" id="nav-btn-command" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="activity" class="w-4 h-4 text-rose-500"></i>
+            <span>🔴 Live Score &amp; Sesi</span>
+            <span class="ml-auto px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black">Live</span>
+          </button>
+
+          <p class="px-3 text-[10px] uppercase font-black text-slate-400 tracking-wider pt-3 mb-2">Pengaturan &amp; Umum</p>
+
+          <!-- 6. Menu Profil Sekolah -->
+          <button onclick="switchTab('profil')" id="nav-btn-profil" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="landmark" class="w-4 h-4 text-indigo-600"></i>
+            <span>🏛️ Profil Sekolah</span>
+          </button>
+
+          <!-- 7. Menu Pengaturan Akun Admin -->
+          <button onclick="switchTab('akun')" id="nav-btn-akun" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer">
+            <i data-lucide="user-cog" class="w-4 h-4 text-slate-700"></i>
+            <span>⚙️ Pengaturan Akun</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer Quick Status -->
+      <div class="p-4 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span>Tahun Pelajaran</span>
+          <span id="sidebar-tahun-pelajaran" class="font-bold text-slate-800">2026/2027 SD</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span>Basis Data</span>
+          <span class="font-bold text-emerald-600 font-mono">localStorage OK</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN WORKSPACE CONTENT -->
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+
+      <!-- ================= VIEW 1: OVERVIEW & STATS ================= -->
+      <div id="view-overview" class="space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-black text-slate-900">Dashboard Utama Administrator SD</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Kendali sentralisasi data Guru, Rombel Kelas 1-6 SD, dan Jadwal Ulangan Berbasis LocalStorage permanen.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-sync-data" onclick="initAdminData(true)" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-indigo-600"></i>
+              <span>Sinkron Data</span>
+            </button>
+            <button id="btn-quick-add-jadwal" onclick="openModalAddJadwal()" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm cursor-pointer">
+              <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+              <span>+ Jadwal Baru</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 5 Stat Cards Terhubung Langsung ke LocalStorage -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div id="card-stat-guru" onclick="switchTab('guru')" class="p-5 rounded-3xl bg-white border border-slate-200 shadow-2xs space-y-2 hover:border-teal-500 cursor-pointer transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase text-slate-500">Guru SD</span>
+              <div class="w-9 h-9 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center font-bold">
+                <i data-lucide="users" class="w-5 h-5"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-black text-slate-900" id="stat-total-guru">0</p>
+            <p class="text-[11px] text-teal-700 font-bold">Akses Admin Saja</p>
+          </div>
+
+          <div id="card-stat-rombel" onclick="switchTab('rombel')" class="p-5 rounded-3xl bg-white border border-slate-200 shadow-2xs space-y-2 hover:border-blue-500 cursor-pointer transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase text-slate-500">Rombel SD</span>
+              <div class="w-9 h-9 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                <i data-lucide="school" class="w-5 h-5"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-black text-slate-900" id="stat-total-rombel">0</p>
+            <p class="text-[11px] text-blue-700 font-bold">Kelas 1 s/d 6</p>
+          </div>
+
+          <div id="card-stat-siswa" onclick="switchTab('siswa')" class="p-5 rounded-3xl bg-white border border-slate-200 shadow-2xs space-y-2 hover:border-emerald-500 cursor-pointer transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase text-slate-500">Murid SD</span>
+              <div class="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-black text-slate-900" id="stat-total-siswa">0</p>
+            <p class="text-[11px] text-emerald-700 font-bold">Data Seluruh Siswa</p>
+          </div>
+
+          <div id="card-stat-jadwal" onclick="switchTab('jadwal')" class="p-5 rounded-3xl bg-white border border-slate-200 shadow-2xs space-y-2 hover:border-indigo-500 cursor-pointer transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase text-slate-500">Jadwal</span>
+              <div class="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
+                <i data-lucide="calendar" class="w-5 h-5"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-black text-slate-900" id="stat-total-jadwal">0</p>
+            <p class="text-[11px] text-indigo-700 font-bold">Ulangan Aktif</p>
+          </div>
+
+          <div id="card-stat-soal" onclick="switchTab('soal')" class="p-5 rounded-3xl bg-white border border-slate-200 shadow-2xs space-y-2 hover:border-purple-500 cursor-pointer transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase text-slate-500">Bank Soal</span>
+              <div class="w-9 h-9 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                <i data-lucide="book-open" class="w-5 h-5"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-black text-slate-900" id="stat-total-soal">0</p>
+            <p class="text-[11px] text-purple-700 font-bold">Butir Soal A-D</p>
+          </div>
+        </div>
+
+        <!-- Quick Access Banner -->
+        <div class="p-6 rounded-3xl bg-gradient-to-r from-indigo-50 via-sky-50 to-amber-50 border border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-black">ROLE: ADMIN</span>
+              <h3 class="font-black text-base text-slate-900">Hak Akses Khusus Administrator SD</h3>
+            </div>
+            <p class="text-xs text-slate-600 font-medium leading-relaxed max-w-xl">
+              Hanya akun Administrator yang berhak menambah Guru baru dan mengalokasikan Wali Kelas. Guru &amp; Wali Kelas bertugas mendaftarkan murid di kelas binaannya serta membuat soal.
+            </p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="btn-quick-add-guru" onclick="openModalAddGuru()" class="px-4 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="user-plus" class="w-4 h-4"></i>
+              <span>+ Tambah Guru</span>
+            </button>
+            <button id="btn-quick-add-rombel" onclick="openModalAddRombel()" class="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>+ Buat Rombel</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 2: DATA GURU SD (HANYA ADMIN) ================= -->
+      <div id="view-guru" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-2xl font-black text-slate-900">👩‍🏫 Data Guru &amp; Tenaga Pendidik SD</h1>
+              <span class="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[10px] font-black border border-teal-200">
+                Eksklusif Admin
+              </span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Tambah guru baru, edit penugasan mata pelajaran, reset kata sandi, dan hapus akun guru.</p>
+          </div>
+          <button id="btn-add-guru-main" onclick="openModalAddGuru()" class="px-4 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white font-black text-xs flex items-center gap-2 shadow-sm transition cursor-pointer">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>+ Tambah Guru Baru</span>
+          </button>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="relative w-full sm:w-72">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+              <input type="text" id="search-guru" oninput="renderGuruTable()" placeholder="Cari nama atau NIP guru..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-teal-600" />
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="confirmClearAll('guru')" class="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer shrink-0">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>Kosongkan Semua</span>
+              </button>
+              <p class="text-xs text-slate-500 font-bold hidden sm:block">Data tersinkron otomatis ke LocalStorage</p>
+            </div>
+          </div>
+
+          <!-- Bulk Action Bar Guru -->
+          <div id="bulk-bar-guru" class="hidden items-center justify-between p-3 px-4 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs font-bold transition-all">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse"></span>
+              <span id="bulk-count-guru">0 guru terpilih</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="confirmBulkDelete('guru')" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span id="btn-label-bulk-guru">Hapus Terpilih (0)</span>
+              </button>
+              <button type="button" onclick="deselectAll('guru')" class="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold transition cursor-pointer">
+                Batal
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 font-black uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-3.5 px-3 text-center w-10">
+                    <input type="checkbox" id="check-all-guru" onchange="toggleSelectAll('guru', this.checked)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" title="Pilih Semua">
+                  </th>
+                  <th class="py-3.5 px-4 sm:px-6">Nama Guru &amp; NIP</th>
+                  <th class="py-3.5 px-4">Email Resmi</th>
+                  <th class="py-3.5 px-4">Mata Pelajaran</th>
+                  <th class="py-3.5 px-4">Wali Kelas</th>
+                  <th class="py-3.5 px-4 text-center">Kata Sandi</th>
+                  <th class="py-3.5 px-4 text-center">Aksi Administrator</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="table-guru-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 3: MANAJEMEN ROMBEL ================= -->
+      <div id="view-rombel" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-black text-slate-900">🏫 Manajemen Rombel &amp; Wali Kelas SD</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Buat rombel baru (contoh: Kelas 1A, Kelas 5B), pilih tingkat kelas 1-6 SD, dan tetapkan Wali Kelas dari daftar guru.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="confirmClearAll('rombel')" class="px-3.5 py-2.5 rounded-2xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Kosongkan Semua</span>
+            </button>
+            <button id="btn-add-rombel-main" onclick="openModalAddRombel()" class="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center gap-2 shadow-sm transition cursor-pointer">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>+ Buat Rombel Baru</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Toolbar & Bulk Action Bar Rombel -->
+        <div class="p-3.5 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <label class="flex items-center gap-2 cursor-pointer font-bold text-slate-700 select-none">
+            <input type="checkbox" id="check-all-rombel" onchange="toggleSelectAll('rombel', this.checked)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer">
+            <span>Pilih Semua Rombel</span>
+          </label>
+          <div id="bulk-bar-rombel" class="hidden items-center gap-2">
+            <span id="bulk-count-rombel" class="font-black text-rose-700">0 rombel terpilih</span>
+            <button type="button" onclick="confirmBulkDelete('rombel')" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1 shadow-sm transition cursor-pointer active:scale-95">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span id="btn-label-bulk-rombel">Hapus Terpilih (0)</span>
+            </button>
+            <button type="button" onclick="deselectAll('rombel')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer">
+              Batal
+            </button>
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" id="rombel-grid-container">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
+      <!-- ================= VIEW 4: JADWAL ULANGAN SD (TAMBAH & EDIT) ================= -->
+      <div id="view-jadwal" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-black text-slate-900">📅 Jadwal Ulangan &amp; Asesmen SD</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Tambah jadwal baru, edit waktu, ubah token, atau nonaktifkan ujian murid SD.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="confirmClearAll('jadwal')" class="px-3.5 py-2.5 rounded-2xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Kosongkan Semua</span>
+            </button>
+            <button id="btn-add-jadwal-main" onclick="openModalAddJadwal()" class="px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs flex items-center gap-2 shadow-sm transition cursor-pointer">
+              <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+              <span>+ Tambah Jadwal Ulangan Baru</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Wireframe Compliant Schedule Table -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <span class="text-xs font-black uppercase text-slate-700 flex items-center gap-1.5">
+              <span>📅 DAFTAR JADWAL ULANGAN AKTIF &amp; MENDATANG</span>
+            </span>
+            <span class="text-[11px] text-slate-400 font-bold">*Klik tombol ✏️ untuk mengubah jadwal &amp; token</span>
+          </div>
+
+          <!-- Bulk Action Bar Jadwal -->
+          <div id="bulk-bar-jadwal" class="hidden items-center justify-between p-3 px-4 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs font-bold transition-all">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse"></span>
+              <span id="bulk-count-jadwal">0 jadwal terpilih</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="confirmBulkDelete('jadwal')" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span id="btn-label-bulk-jadwal">Hapus Terpilih (0)</span>
+              </button>
+              <button type="button" onclick="deselectAll('jadwal')" class="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold transition cursor-pointer">
+                Batal
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 font-black uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-3.5 px-3 text-center w-10">
+                    <input type="checkbox" id="check-all-jadwal" onchange="toggleSelectAll('jadwal', this.checked)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" title="Pilih Semua">
+                  </th>
+                  <th class="py-3.5 px-4 sm:px-6">ULANGAN &amp; MAPEL</th>
+                  <th class="py-3.5 px-4">ROMBEL</th>
+                  <th class="py-3.5 px-4">WAKTU &amp; DURASI</th>
+                  <th class="py-3.5 px-4 text-center">TOKEN</th>
+                  <th class="py-3.5 px-4 text-center">STATUS</th>
+                  <th class="py-3.5 px-4 text-center">AKSI</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="table-jadwal-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: DATA SISWA SD (SENTRALISASI ADMIN) ================= -->
+      <div id="view-siswa" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-2xl font-black text-slate-900">🎒 Direktori Seluruh Siswa SD</h1>
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200">
+                Semua Rombel
+              </span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Pantau seluruh akun murid kelas 1-6 SD, kata sandi ujian, dan reset sesi pengerjaan.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="printAdminKartuUjian()" class="px-3.5 py-2.5 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-sky-600/20 cursor-pointer transition active:scale-95">
+              <i data-lucide="printer" class="w-4 h-4"></i>
+              <span>🖨️ Cetak Kartu Ujian (A4)</span>
+            </button>
+            <button onclick="printAdminBeritaAcara()" class="px-3.5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer transition active:scale-95">
+              <i data-lucide="file-text" class="w-4 h-4"></i>
+              <span>📄 Cetak Berita Acara &amp; Hadir</span>
+            </button>
+            <button onclick="renderAdminSiswaTable()" class="px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer transition">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-emerald-600"></i>
+              <span>Segarkan</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="relative w-full sm:w-72">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+              <input type="text" id="admin-search-siswa" oninput="renderAdminSiswaTable()" placeholder="Cari NISN atau nama murid..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600" />
+            </div>
+            <div class="flex items-center gap-2">
+              <select id="admin-filter-rombel" onchange="renderAdminSiswaTable()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-700">
+                <option value="ALL">Semua Rombel</option>
+              </select>
+              <button type="button" onclick="confirmClearAll('siswa')" class="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer shrink-0">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>Kosongkan Semua</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Bulk Action Bar Siswa -->
+          <div id="bulk-bar-siswa" class="hidden items-center justify-between p-3 px-4 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs font-bold transition-all">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse"></span>
+              <span id="bulk-count-siswa">0 murid terpilih</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="confirmBulkDelete('siswa')" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span id="btn-label-bulk-siswa">Hapus Terpilih (0)</span>
+              </button>
+              <button type="button" onclick="deselectAll('siswa')" class="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold transition cursor-pointer">
+                Batal
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 font-black uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-3.5 px-3 text-center w-10">
+                    <input type="checkbox" id="check-all-siswa" onchange="toggleSelectAll('siswa', this.checked)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" title="Pilih Semua">
+                  </th>
+                  <th class="py-3.5 px-4 sm:px-6">Nama &amp; NISN Murid</th>
+                  <th class="py-3.5 px-4">Kelas / Rombel</th>
+                  <th class="py-3.5 px-4">🔑 Password Ujian</th>
+                  <th class="py-3.5 px-4 text-center">Status Ujian</th>
+                  <th class="py-3.5 px-4 text-center">Aksi Administrator</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="table-admin-siswa-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 5: LIVE SCORE & MONITORING ================= -->
+      <div id="view-command" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+              <h1 class="text-2xl font-black text-slate-900">🔴 Live Score &amp; Pemantauan Ujian</h1>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Pantau status pengerjaan murid SD secara langsung dan ekspor rekapitulasi nilai ke Excel.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="exportAdminLiveScoreExcel()" class="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-emerald-600/25 transition active:scale-95 cursor-pointer">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>📥 Ekspor Nilai ke Excel (.xlsx)</span>
+            </button>
+            <button onclick="renderLiveScoreTable()" class="px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer transition">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-rose-600"></i>
+              <span>Segarkan Status</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-slate-600">Filter Ekspor &amp; Pantauan:</span>
+              <select id="admin-livescore-mapel" onchange="renderLiveScoreTable()" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-700">
+                <option value="ALL">Semua Mata Pelajaran</option>
+                <option value="Matematika SD">Matematika SD</option>
+                <option value="IPAS Fase C">IPAS Fase C</option>
+                <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                <option value="Pendidikan Pancasila">Pendidikan Pancasila</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <select id="admin-livescore-rombel" onchange="renderLiveScoreTable()" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-700">
+                <option value="ALL">Semua Rombel</option>
+              </select>
+              <button type="button" onclick="confirmClearAll('livescore')" class="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer shrink-0">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>Kosongkan Sesi</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Bulk Action Bar Live Score -->
+          <div id="bulk-bar-livescore" class="hidden items-center justify-between p-3 px-4 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs font-bold transition-all">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse"></span>
+              <span id="bulk-count-livescore">0 sesi murid terpilih</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="confirmBulkDelete('livescore')" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span id="btn-label-bulk-livescore">Reset Sesi Terpilih (0)</span>
+              </button>
+              <button type="button" onclick="deselectAll('livescore')" class="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold transition cursor-pointer">
+                Batal
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 font-black uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-3.5 px-3 text-center w-10">
+                    <input type="checkbox" id="check-all-livescore" onchange="toggleSelectAll('livescore', this.checked)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" title="Pilih Semua">
+                  </th>
+                  <th class="py-3.5 px-4 sm:px-6">Nama Murid &amp; NISN</th>
+                  <th class="py-3.5 px-4">Rombel</th>
+                  <th class="py-3.5 px-4 text-center">Nilai &amp; Poin</th>
+                  <th class="py-3.5 px-4 text-center">Status Ujian</th>
+                  <th class="py-3.5 px-4 text-center">Kata Sandi</th>
+                  <th class="py-3.5 px-4 text-center">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="table-livescore-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 6: BANK SOAL SD (A-D) ================= -->
+      <div id="view-soal" class="space-y-6 hidden">
+        <!-- Top Action Header -->
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-black text-slate-900">📝 Buat &amp; Kelola Bank Soal SD (A-D)</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Dukung format ramah anak SD: Pilihan Ganda (Maksimal 4 Opsi: A, B, C, D), Isian Singkat, dan Menjodohkan.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="openModalKelolaMapel()" class="px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-black text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+              <i data-lucide="book-marked" class="w-4 h-4 text-purple-600"></i>
+              <span>📚 + Kelola Mapel</span>
+            </button>
+            <button onclick="openModalImportSoal()" class="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-teal-700/20 transition active:scale-95 cursor-pointer">
+              <i data-lucide="file-up" class="w-4 h-4"></i>
+              <span>📥 Import Word / Google Form</span>
+            </button>
+            <button onclick="openModalTambahSoal()" class="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-indigo-600/20 transition active:scale-95 cursor-pointer">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+              <span>➕ Buat Soal SD Baru</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Mata Pelajaran Tabs & Controls Card -->
+        <div class="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-3.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+              <span>🎯 FILTER MATA PELAJARAN SD:</span>
+            </span>
+            <span class="text-[11px] font-bold text-slate-400" id="soal-count-badge">Memuat soal...</span>
+          </div>
+
+          <!-- Subject Filter Horizontal Pills Container -->
+          <div class="flex flex-wrap items-center gap-1.5" id="admin-mapel-filter-tabs">
+            <!-- Injected via renderMapelFilterTabs() -->
+          </div>
+
+          <!-- Secondary Filters Row (Tingkat Kelas & Search) -->
+          <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-600 shrink-0">Filter Kelas:</span>
+              <select id="filter-soal-kelas" onchange="renderBankSoal()" class="px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+                <option value="ALL">Semua Kelas (1 - 6 SD)</option>
+                <option value="1">Kelas 1 SD (Fase A)</option>
+                <option value="2">Kelas 2 SD (Fase A)</option>
+                <option value="3">Kelas 3 SD (Fase B)</option>
+                <option value="4">Kelas 4 SD (Fase B)</option>
+                <option value="5">Kelas 5 SD (Fase C)</option>
+                <option value="6">Kelas 6 SD (Fase C)</option>
+              </select>
+            </div>
+
+            <div class="relative flex-1 sm:max-w-xs">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+              <input type="text" id="search-soal" oninput="renderBankSoal()" placeholder="Cari pertanyaan, wacana, CP..." 
+                class="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 placeholder:font-normal focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Wireframe Pro: Bank Soal SD Table Container -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <span class="text-xs font-black uppercase text-slate-700 flex items-center gap-1.5">
+              <span>📋 BUTIR SOAL SD TERDAFTAR</span>
+            </span>
+            <button type="button" onclick="confirmClearAll('soal')" class="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Kosongkan Bank Soal</span>
+            </button>
+          </div>
+
+          <!-- Bulk Action Bar Bank Soal -->
+          <div id="bulk-bar-soal" class="hidden items-center justify-between p-3 px-4 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs font-bold transition-all">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse"></span>
+              <span id="bulk-count-soal">0 butir soal terpilih</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="confirmBulkDelete('soal')" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span id="btn-label-bulk-soal">Hapus Terpilih (0)</span>
+              </button>
+              <button type="button" onclick="deselectAll('soal')" class="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold transition cursor-pointer">
+                Batal
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 font-black uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-3.5 px-3 text-center w-10">
+                    <input type="checkbox" id="check-all-soal" onchange="toggleSelectAll('soal', this.checked)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" title="Pilih Semua">
+                  </th>
+                  <th class="py-3.5 px-4 text-center w-12">NO</th>
+                  <th class="py-3.5 px-4 w-44">Mata Pelajaran &amp; Kelas</th>
+                  <th class="py-3.5 px-4">Pertanyaan &amp; Opsi (A-D)</th>
+                  <th class="py-3.5 px-4 text-center w-24">Kunci</th>
+                  <th class="py-3.5 px-4 text-center w-28">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium text-slate-700" id="admin-bank-table-body">
+                <!-- Injected via renderBankSoal() -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 7: PROFIL SEKOLAH SD ================= -->
+      <div id="view-profil" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+              <h1 class="text-2xl font-black text-slate-900">🏛️ Manajemen Profil Sekolah SD</h1>
+              <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black border border-indigo-200">
+                Identitas Resmi SD/MI
+              </span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Data identitas satuan pendidikan, kepala sekolah, tahun pelajaran aktif, dan logo kop resmi untuk kartu ujian serta dokumen cetak.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="resetProfilSekolahDefault()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer transition">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>Reset Default</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Kolom Formulir Profil Sekolah (7 Kolom) -->
+          <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200 shadow-2xs p-6 space-y-5">
+            <div class="pb-3 border-b border-slate-100 flex items-center justify-between">
+              <h2 class="font-black text-sm text-slate-900 flex items-center gap-2">
+                <i data-lucide="building-2" class="w-4 h-4 text-indigo-600"></i>
+                <span>Form Identitas Satuan Pendidikan SD</span>
+              </h2>
+              <span class="text-[11px] font-mono text-slate-400">LocalStorage: 'sicakap_profil_sekolah'</span>
+            </div>
+
+            <form onsubmit="handleSaveProfilSekolah(event)" class="space-y-4 text-xs">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Nama Lengkap Sekolah / Madrasah <span class="text-rose-500">*</span></label>
+                <input type="text" id="profil-nama-sekolah" required placeholder="Contoh: SDN 1 Nusantara" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400" />
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">NPSN (Nomor Pokok Sekolah Nasional) <span class="text-rose-500">*</span></label>
+                  <input type="text" id="profil-npsn" required placeholder="Contoh: 20104567" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">NSS (Nomor Statistik Sekolah)</label>
+                  <input type="text" id="profil-nss" placeholder="Contoh: 101056001001" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+              </div>
+
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Alamat Lengkap Satuan Pendidikan</label>
+                <textarea id="profil-alamat" rows="2" placeholder="Jalan, RT/RW, Kelurahan, Kecamatan, Kota/Kabupaten, Kode Pos" class="w-full p-3 rounded-xl border border-slate-200 font-medium text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 leading-relaxed"></textarea>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Nama Kepala Sekolah &amp; Gelar</label>
+                  <input type="text" id="profil-kepsek-nama" placeholder="Contoh: Drs. H. Mulyadi, M.Pd." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">NIP Kepala Sekolah</label>
+                  <input type="text" id="profil-kepsek-nip" placeholder="Contoh: 196803121992031004" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Tahun Pelajaran Aktif</label>
+                  <input type="text" id="profil-tahun-pelajaran" required placeholder="2026/2027 SD" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Semester Aktif</label>
+                  <select id="profil-semester" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-indigo-100">
+                    <option value="Ganjil">Semester Ganjil</option>
+                    <option value="Genap">Semester Genap</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Logo Sekolah -->
+              <div class="space-y-2 pt-2 border-t border-slate-100">
+                <label class="block font-bold text-slate-700">Logo Resmi Sekolah (Kop Laporan &amp; Kartu Ujian)</label>
+                <div class="flex flex-col sm:flex-row items-center gap-3">
+                  <div class="flex-1 w-full">
+                    <input type="text" id="profil-logo-url" oninput="updateLogoPreviewFromInput()" placeholder="Tempel URL gambar logo (https://...)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono text-xs text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                  </div>
+                  <span class="text-xs text-slate-400 font-bold">atau</span>
+                  <label class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                    <span>Pilih File Gambar</span>
+                    <input type="file" id="profil-logo-file" accept="image/*" onchange="handleLogoFileUpload(this)" class="hidden" />
+                  </label>
+                </div>
+                <p class="text-[11px] text-slate-400 font-medium">Mendukung format JPG, PNG, WebP, SVG. Gambar otomatis dikonversi ke Base64 aman.</p>
+              </div>
+
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button type="submit" class="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md shadow-indigo-600/25 flex items-center gap-2 cursor-pointer transition active:scale-95">
+                  <i data-lucide="save" class="w-4 h-4"></i>
+                  <span>Simpan Profil Sekolah</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Kolom Preview Kartu & Kop Resmi (5 Kolom) -->
+          <div class="lg:col-span-5 space-y-4">
+            <!-- Kop Preview Card -->
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-2xs p-5 space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-xs font-black uppercase text-indigo-700 tracking-wider">Pratinjau Kop Resmi Dokumen</span>
+                <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">Live Preview</span>
+              </div>
+
+              <!-- Kop Dokumen Render Box -->
+              <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-center text-slate-800">
+                <div class="flex items-center justify-center gap-3">
+                  <div id="profil-preview-logo-box" class="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center overflow-hidden shrink-0">
+                    <img id="profil-preview-logo-img" src="" alt="Logo Sekolah" class="w-full h-full object-contain hidden" />
+                    <span id="profil-preview-logo-fallback" class="text-2xl">🏫</span>
+                  </div>
+                  <div class="text-left">
+                    <p class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">PEMERINTAH DAERAH / YAYASAN PENDIDIKAN</p>
+                    <h3 id="preview-kop-nama" class="font-black text-sm uppercase text-slate-900 tracking-wide">SDN 1 NUSANTARA</h3>
+                    <p id="preview-kop-npsn" class="text-[10px] font-mono font-bold text-slate-600">NPSN: 20104567 • NSS: 101056001001</p>
+                  </div>
+                </div>
+                <div class="border-t-2 border-slate-900 my-1.5"></div>
+                <p id="preview-kop-alamat" class="text-[10px] text-slate-600 font-medium leading-relaxed">
+                  Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan
+                </p>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 space-y-2 text-xs">
+                <span class="font-bold text-indigo-900 block">Penanggung Jawab Ujian / Kepala Sekolah:</span>
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="text-slate-500 font-medium">Kepala Sekolah:</span>
+                  <span id="preview-kop-kepsek" class="font-black text-slate-800">Drs. H. Mulyadi, M.Pd.</span>
+                </div>
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="text-slate-500 font-medium">NIP Kepsek:</span>
+                  <span id="preview-kop-nip" class="font-mono font-bold text-slate-700">196803121992031004</span>
+                </div>
+                <div class="flex items-center justify-between text-[11px] pt-1 border-t border-indigo-200/50">
+                  <span class="text-slate-500 font-medium">Tahun &amp; Semester:</span>
+                  <span id="preview-kop-tapel" class="font-bold text-indigo-800">2026/2027 SD (Ganjil)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hint Card -->
+            <div class="p-4 rounded-3xl bg-amber-50/70 border border-amber-200 space-y-1 text-xs text-amber-950">
+              <span class="font-black flex items-center gap-1.5 text-amber-900">
+                <i data-lucide="info" class="w-4 h-4"></i>
+                <span>Sinkronisasi Otomatis Seluruh Aplikasi</span>
+              </span>
+              <p class="text-[11px] leading-relaxed font-medium">
+                Setiap perubahan identitas profil sekolah otomatis memperbarui nama instansi pada pojok kanan atas, kartu ujian peserta seluruh rombel, berita acara, serta kop laporan excel dan cetak resmi.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 8: PENGATURAN AKUN ADMINISTRATOR ================= -->
+      <div id="view-akun" class="space-y-6 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-slate-800"></span>
+              <h1 class="text-2xl font-black text-slate-900">⚙️ Pengaturan Akun Administrator</h1>
+              <span class="px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-800 text-[10px] font-black">
+                Super Admin Level 1
+              </span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Ubah nama tampilan, email administrator, username login, serta amankan akun dengan kata sandi baru.</p>
+          </div>
+        </div>
+
+        <div class="max-w-2xl bg-white rounded-3xl border border-slate-200 shadow-2xs p-6 space-y-5">
+          <div class="flex items-center gap-4 pb-4 border-b border-slate-100">
+            <div id="akun-admin-avatar-big" class="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-600 to-indigo-900 text-white font-black text-xl flex items-center justify-center shadow-md">
+              ADM
+            </div>
+            <div>
+              <h3 id="akun-admin-nama-display" class="font-black text-base text-slate-900">Admin SDN 1 Nusantara</h3>
+              <p id="akun-admin-email-display" class="text-xs text-slate-500 font-mono">admin@sdn1nusantara.sch.id</p>
+              <span class="inline-block mt-1 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                Akses Penuh: Kendali Guru, Rombel, &amp; CBT SD
+              </span>
+            </div>
+          </div>
+
+          <form onsubmit="handleSaveAkunAdmin(event)" class="space-y-4 text-xs">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Nama Tampilan Administrator <span class="text-rose-500">*</span></label>
+              <input type="text" id="akun-admin-nama" required placeholder="Contoh: Admin SDN 1 Nusantara" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Email Resmi Admin <span class="text-rose-500">*</span></label>
+                <input type="email" id="akun-admin-email" required placeholder="admin@sdn1nusantara.sch.id" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 mb-1">Username Login</label>
+                <input type="text" id="akun-admin-username" required placeholder="admin" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+              </div>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 space-y-3">
+              <span class="font-bold text-slate-800 block">Ubah Kata Sandi (Opsional):</span>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-medium text-slate-600 mb-1">Kata Sandi Baru</label>
+                  <input type="password" id="akun-admin-password" placeholder="Minimal 6 karakter..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+                <div>
+                  <label class="block font-medium text-slate-600 mb-1">Konfirmasi Kata Sandi Baru</label>
+                  <input type="password" id="akun-admin-password-confirm" placeholder="Ulangi kata sandi baru..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-400 font-medium">Kosongkan kolom kata sandi jika hanya ingin memperbarui nama dan email.</p>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button type="submit" class="px-6 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md flex items-center gap-2 cursor-pointer transition active:scale-95">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
+                <span>Simpan Pengaturan Akun</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ================= MODAL TAMBAH GURU (HANYA ADMIN) ================= -->
+  <div id="modal-add-guru" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-teal-100">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-black text-base text-slate-900">Tambah Guru Baru (Admin SD)</h3>
+          <p class="text-xs text-slate-500">Mendaftarkan tenaga pendidik resmi ke dalam sistem</p>
+        </div>
+        <button onclick="closeModal('modal-add-guru')" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleSaveGuru(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nama Lengkap &amp; Gelar</label>
+          <input type="text" id="guru-nama" required placeholder="Contoh: Dra. Hj. Siti Rahmawati, M.Pd." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400" />
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">NIP (18 Digit) / NUPTK</label>
+            <input type="text" id="guru-nip" required placeholder="198205112008011012" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Email Resmi</label>
+            <input type="email" id="guru-email" required placeholder="guru@sdn1nusantara.sch.id" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Mata Pelajaran Diampu</label>
+            <input type="text" id="guru-mapel" required placeholder="Contoh: Matematika &amp; IPAS" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Wali Kelas (Opsional)</label>
+            <select id="guru-rombelwali" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400">
+              <option value="">-- Bukan Wali Kelas --</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Kata Sandi Awal</label>
+          <input type="text" id="guru-password" value="cakap2026" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100" />
+        </div>
+
+        <div class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-add-guru')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black shadow-md shadow-teal-700/20 cursor-pointer">Simpan Guru Baru</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL BUAT / EDIT ROMBEL ================= -->
+  <div id="modal-add-rombel" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-blue-100">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-black text-base text-slate-900" id="modal-rombel-title">Buat Rombel Baru</h3>
+          <p class="text-xs text-slate-500">Tentukan rombongan belajar dan tetapkan guru wali</p>
+        </div>
+        <button onclick="closeModal('modal-add-rombel')" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleSaveRombel(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="rombel-edit-id" value="">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nama Rombel</label>
+          <input type="text" id="rombel-nama" required placeholder="Contoh: Kelas 1A atau Kelas 5B" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400" />
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tingkat Kelas</label>
+            <select id="rombel-tingkat" onchange="autoSetFase()" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-blue-100">
+              <option value="1">Kelas 1 SD</option>
+              <option value="2">Kelas 2 SD</option>
+              <option value="3">Kelas 3 SD</option>
+              <option value="4">Kelas 4 SD</option>
+              <option value="5" selected>Kelas 5 SD</option>
+              <option value="6">Kelas 6 SD</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Fase Pembelajaran</label>
+            <input type="text" id="rombel-fase" readonly value="Fase C" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 font-bold text-slate-700" />
+          </div>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Wali Kelas (Dari Daftar Guru)</label>
+          <select id="rombel-wali" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-blue-100">
+            <!-- Injected from sicakap_guru -->
+          </select>
+        </div>
+
+        <div class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-add-rombel')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-md shadow-blue-600/20 cursor-pointer">Simpan Rombel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL TAMBAH / EDIT JADWAL ULANGAN ================= -->
+  <div id="modal-add-jadwal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-amber-100">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-black text-base text-slate-900" id="modal-jadwal-title">Tambah Jadwal Ulangan Baru</h3>
+          <p class="text-xs text-slate-500">Konfigurasi asesmen, target kelas, waktu, dan token ujian</p>
+        </div>
+        <button onclick="closeModal('modal-add-jadwal')" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleSaveJadwal(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="jadwal-edit-id" value="">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nama Ulangan / Asesmen</label>
+          <input type="text" id="jadwal-nama" required placeholder="Contoh: Ulangan Harian Bab 2 (Pecahan & Desimal)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-400" />
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Mata Pelajaran</label>
+            <input type="text" id="jadwal-mapel" required placeholder="Contoh: Matematika SD" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100 focus:border-amber-400" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Rombel Sasaran</label>
+            <select id="jadwal-rombel" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-amber-100">
+              <!-- Injected from sicakap_rombel -->
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tanggal</label>
+            <input type="date" id="jadwal-tanggal" required class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Jam Mulai</label>
+            <input type="time" id="jadwal-jam" required value="08:00" class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Durasi (Menit)</label>
+            <input type="number" id="jadwal-durasi" required min="15" max="180" value="60" class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Token Ujian (6 Karakter)</label>
+            <div class="flex items-center gap-1.5">
+              <input type="text" id="jadwal-token" maxlength="6" required value="CKP26A" class="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono uppercase tracking-widest font-black text-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-100" />
+              <button type="button" onclick="randomizeJadwalToken()" class="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer" title="Acak Token">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Status Ujian</label>
+            <select id="jadwal-status" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-amber-100">
+              <option value="Aktif" selected>🟢 Aktif</option>
+              <option value="Nonaktif">⚪ Nonaktif</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-add-jadwal')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black shadow-md shadow-amber-500/20 cursor-pointer">Simpan Jadwal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 1: TAMBAH / EDIT SOAL SD (PILIHAN GANDA A-D & ISIAN) ================= -->
+  <div id="modal-add-soal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-indigo-100 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-black text-base text-slate-900 flex items-center gap-2" id="modal-soal-title">
+            <span>📝 Buat Butir Soal SD Baru</span>
+            <span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black">Standar SD</span>
+          </h3>
+          <p class="text-xs text-slate-500">Standar Asesmen SD Kurikulum Merdeka (Fase A, B, C)</p>
+        </div>
+        <button type="button" onclick="closeModal('modal-add-soal')" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleSaveSoal(event)" class="space-y-3.5 text-xs">
+        <input type="hidden" id="soal-edit-id" value="">
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Mata Pelajaran</label>
+            <select id="soal-mapel" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+              <!-- Dynamically populated from SicakapDB.getMapel() -->
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tingkat Kelas SD</label>
+            <select id="soal-tingkat" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+              <option value="1">Kelas 1 SD (Fase A)</option>
+              <option value="2">Kelas 2 SD (Fase A)</option>
+              <option value="3">Kelas 3 SD (Fase B)</option>
+              <option value="4">Kelas 4 SD (Fase B)</option>
+              <option value="5" selected>Kelas 5 SD (Fase C)</option>
+              <option value="6">Kelas 6 SD (Fase C)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tipe Soal</label>
+            <select id="soal-tipe" onchange="onSoalTypeChange()" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+              <option value="single" selected>Pilihan Ganda (A-D)</option>
+              <option value="multiple">Pilihan Ganda Kompleks</option>
+              <option value="short">Isian Singkat</option>
+              <option value="match">Menjodohkan</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Capaian Pembelajaran (CP / TP / Materi)</label>
+          <input type="text" id="soal-cp" required placeholder="Contoh: Numerasi SD: Pecahan & Operasi Hitung" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:ring-4 focus:ring-indigo-100" />
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Wacana / Cerita Pengantar <span class="text-slate-400 font-normal">(Opsional)</span></label>
+          <textarea id="soal-wacana" rows="2" placeholder="Tuliskan cerita kontekstual ramah anak SD..." class="w-full p-3 rounded-xl border border-slate-200 font-medium text-slate-800 focus:ring-4 focus:ring-indigo-100"></textarea>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Teks Pertanyaan Soal</label>
+          <textarea id="soal-pertanyaan" required rows="2" placeholder="Pertanyaan yang diajukan ke murid..." class="w-full p-3 rounded-xl border border-slate-200 font-bold text-slate-800 focus:ring-4 focus:ring-indigo-100"></textarea>
+        </div>
+
+        <!-- Opsi A, B, C, D (Otomatis menyesuaikan tipe soal) -->
+        <div id="container-opsi-abcd" class="space-y-2 pt-1 border-t border-slate-100">
+          <label class="block font-black text-slate-800">Pilihan Jawaban (Hanya A, B, C, D):</label>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 font-black flex items-center justify-center shrink-0">A</span>
+              <input type="text" id="soal-opsi-a" placeholder="Teks opsi A..." class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 font-black flex items-center justify-center shrink-0">B</span>
+              <input type="text" id="soal-opsi-b" placeholder="Teks opsi B..." class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 font-black flex items-center justify-center shrink-0">C</span>
+              <input type="text" id="soal-opsi-c" placeholder="Teks opsi C..." class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-800 font-black flex items-center justify-center shrink-0">D</span>
+              <input type="text" id="soal-opsi-d" placeholder="Teks opsi D..." class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800" />
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5 pt-1">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">🔑 Kunci Jawaban Benar</label>
+            <select id="soal-kunci" class="w-full px-3 py-2.5 rounded-xl border border-emerald-300 font-black text-emerald-900 bg-emerald-50">
+              <option value="A">Opsi A</option>
+              <option value="B" selected>Opsi B</option>
+              <option value="C">Opsi C</option>
+              <option value="D">Opsi D</option>
+            </select>
+            <input type="text" id="soal-kunci-text" placeholder="Jawaban singkat benar..." class="hidden w-full px-3 py-2 rounded-xl border border-emerald-300 font-bold text-slate-800 bg-emerald-50" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Level Kognitif</label>
+            <select id="soal-level" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+              <option value="L1 (Pemahaman)">L1 (Pemahaman)</option>
+              <option value="L2 (Aplikasi)" selected>L2 (Aplikasi)</option>
+              <option value="L3 (Penalaran)">L3 (Penalaran)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-add-soal')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-md cursor-pointer">💾 Simpan Soal SD</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 2: KELOLA MATA PELAJARAN (sicakap_mapel) ================= -->
+  <div id="modal-kelola-mapel" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-purple-100 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+            <i data-lucide="book-open-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-slate-900">📚 Kelola Mata Pelajaran SD</h3>
+            <p class="text-xs text-slate-500">Atur daftar mata pelajaran &amp; pembagian bank soal</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeModal('modal-kelola-mapel')" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Form Tambah Mapel Baru -->
+      <form onsubmit="handleAddNewMapel(event)" class="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-2.5 text-xs">
+        <span class="font-black text-purple-900 flex items-center gap-1.5">
+          <span>➕ Tambah Mata Pelajaran Baru</span>
+        </span>
+        <div class="grid grid-cols-3 gap-2">
+          <div class="col-span-2">
+            <input type="text" id="new-mapel-nama" required placeholder="Nama Mapel (misal: Bahasa Sunda / PAI)" 
+              class="w-full px-3 py-2 rounded-xl border border-purple-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-purple-100" />
+          </div>
+          <div>
+            <input type="text" id="new-mapel-icon" maxlength="4" placeholder="Icon (🎨, 📖)" value="📚" 
+              class="w-full px-3 py-2 rounded-xl border border-purple-200 text-center font-bold text-slate-800 bg-white" />
+          </div>
+        </div>
+        <div>
+          <input type="text" id="new-mapel-desc" placeholder="Deskripsi materi/fase SD (opsional)..." 
+            class="w-full px-3 py-2 rounded-xl border border-purple-200 font-medium text-slate-700 bg-white text-xs" />
+        </div>
+        <div class="flex justify-end">
+          <button type="submit" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black shadow-xs transition cursor-pointer">
+            + Simpan Mapel
+          </button>
+        </div>
+      </form>
+
+      <!-- Daftar Mapel Terdaftar -->
+      <div class="space-y-2 text-xs">
+        <label class="block font-black text-slate-700">Daftar Mata Pelajaran Terdaftar:</label>
+        <div id="mapel-manager-list" class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+          <!-- Injected via renderMapelManagerList() -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 3: BULK IMPORT WORD & GOOGLE FORM ================= -->
+  <div id="modal-import-soal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-teal-100 max-h-[92vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center font-bold">
+            <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-slate-900">📥 Import Soal Cepat (Word &amp; Google Form)</h3>
+            <p class="text-xs text-slate-500">Otomatis ekstraksi butir soal, opsi A-D, dan kunci jawaban</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeModal('modal-import-soal')" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Target Mapel & Kelas Selection -->
+      <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-2 gap-2.5 text-xs shrink-0">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Target Mata Pelajaran</label>
+          <select id="import-target-mapel" class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+            <!-- Dynamically populated -->
+          </select>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Target Kelas SD</label>
+          <select id="import-target-kelas" class="w-full px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+            <option value="1">Kelas 1 SD (Fase A)</option>
+            <option value="2">Kelas 2 SD (Fase A)</option>
+            <option value="3">Kelas 3 SD (Fase B)</option>
+            <option value="4">Kelas 4 SD (Fase B)</option>
+            <option value="5" selected>Kelas 5 SD (Fase C)</option>
+            <option value="6">Kelas 6 SD (Fase C)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Import Tab Switcher -->
+      <div class="flex items-center border-b border-slate-200 gap-2 shrink-0 text-xs font-bold">
+        <button type="button" onclick="switchImportTab('word')" id="import-tab-btn-word" class="pb-2.5 px-3 border-b-2 border-teal-600 text-teal-800 font-black cursor-pointer">
+          📄 Tab 1: Microsoft Word &amp; Copy-Paste
+        </button>
+        <button type="button" onclick="switchImportTab('csv')" id="import-tab-btn-csv" class="pb-2.5 px-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 cursor-pointer">
+          📊 Tab 2: Google Form / Spreadsheet CSV
+        </button>
+      </div>
+
+      <!-- TAB 1: WORD IMPORT -->
+      <div id="import-tab-word" class="flex-1 overflow-y-auto space-y-3 text-xs pr-1">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-sky-50 border border-sky-200">
+          <p class="text-[11px] text-sky-900 font-bold leading-snug">
+            💡 Upload file .docx / .txt ATAU langsung Copy-Paste ketikan naskah soal dari Word di bawah!
+          </p>
+          <label class="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs shrink-0 flex items-center gap-1 cursor-pointer shadow-xs">
+            <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+            <span>Upload File Word (.docx)</span>
+            <input type="file" id="import-word-file" accept=".docx,.txt" onchange="handleWordFileUpload(this)" class="hidden" />
+          </label>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">
+            Tempel (Paste) Teks Soal Word:
+            <span class="text-slate-400 font-normal ml-1">Format: 1. Soal... A. opsi B. opsi C. opsi D. opsi Kunci: C</span>
+          </label>
+          <textarea id="import-word-text" oninput="parseWordImportText()" rows="6" 
+            placeholder="1. Ibu membeli 3 kantong apel. Tiap kantong berisi 5 apel. Berapa jumlah apel Ibu?&#10;A. 8 apel&#10;B. 12 apel&#10;C. 15 apel&#10;D. 20 apel&#10;Kunci: C&#10;&#10;2. Hasil dari 125 + 75 adalah...&#10;A. 190&#10;B. 200&#10;C. 210&#10;D. 225&#10;Kunci: B"
+            class="w-full p-3 font-mono text-xs rounded-2xl border border-slate-200 focus:outline-none focus:ring-4 focus:ring-teal-100 bg-white leading-relaxed"></textarea>
+        </div>
+
+        <!-- Preview Live Detection Badge -->
+        <div class="flex items-center justify-between">
+          <span class="font-black text-slate-800 text-xs">Preview Soal Terdeteksi:</span>
+          <span id="word-detected-badge" class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-xs">
+            0 Soal Terdeteksi
+          </span>
+        </div>
+
+        <div id="word-preview-container" class="space-y-2 max-h-48 overflow-y-auto">
+          <p class="text-slate-400 text-center py-4 font-bold">Ketik atau tempel teks soal di atas untuk melihat preview otomatis.</p>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-import-soal')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
+          <button type="button" onclick="handleCommitWordImport()" id="btn-commit-word-import" disabled class="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black shadow-md transition cursor-pointer">
+            ⚡ Simpan Semua Soal ke Bank Soal
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 2: GOOGLE FORM / CSV IMPORT -->
+      <div id="import-tab-csv" class="flex-1 overflow-y-auto space-y-3 text-xs pr-1 hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+          <p class="text-[11px] text-emerald-900 font-bold leading-snug">
+            Format Kolom: <strong>Pertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Kunci</strong>
+          </p>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" onclick="downloadSoalCsvTemplate()" class="px-2.5 py-1.5 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-black text-xs hover:bg-emerald-50 transition cursor-pointer">
+              📄 Unduh Template CSV
+            </button>
+            <label class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1 cursor-pointer shadow-xs">
+              <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+              <span>Upload CSV</span>
+              <input type="file" id="import-csv-file" accept=".csv,.tsv,.txt" onchange="handleCsvFileUpload(this)" class="hidden" />
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">
+            Tempel (Paste) Tabel Google Sheets / Excel:
+          </label>
+          <textarea id="import-csv-text" oninput="parseCsvImportText()" rows="6" 
+            placeholder="Ibu membeli 3 kantong apel...&#9;8 apel&#9;12 apel&#9;15 apel&#9;20 apel&#9;C&#10;Hasil dari 125 + 75 adalah...&#9;190&#9;200&#9;210&#9;225&#9;B"
+            class="w-full p-3 font-mono text-xs rounded-2xl border border-slate-200 focus:outline-none focus:ring-4 focus:ring-emerald-100 bg-white leading-relaxed"></textarea>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <span class="font-black text-slate-800 text-xs">Preview Baris Soal Terdeteksi:</span>
+          <span id="csv-detected-badge" class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-xs">
+            0 Soal Terdeteksi
+          </span>
+        </div>
+
+        <div id="csv-preview-container" class="space-y-2 max-h-48 overflow-y-auto">
+          <p class="text-slate-400 text-center py-4 font-bold">Ketik atau tempel baris spreadsheet di atas untuk melihat preview otomatis.</p>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-import-soal')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
+          <button type="button" onclick="handleCommitCsvImport()" id="btn-commit-csv-import" disabled class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black shadow-md transition cursor-pointer">
+            ⚡ Simpan Semua Soal ke Bank Soal
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold transition-all duration-300 translate-y-20 opacity-0 pointer-events-none">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+    <span id="toast-message">Operasi berhasil!</span>
+  </div>
+
+  <!-- ================= SCRIPT LOGIC ADMIN DASHBOARD ================= -->
+  <script>
+    lucide.createIcons();
+
+    // Tab Navigation
+    function switchTab(tabId) {
+      const tabs = ['overview', 'guru', 'rombel', 'siswa', 'jadwal', 'soal', 'command', 'profil', 'akun'];
+      tabs.forEach(t => {
+        const view = document.getElementById(`view-${t}`);
+        const btn = document.getElementById(`nav-btn-${t}`);
+        if (view) {
+          if (t === tabId) view.classList.remove('hidden');
+          else view.classList.add('hidden');
+        }
+        if (btn) {
+          if (t === tabId) {
+            btn.className = 'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 font-black transition cursor-pointer';
+          } else {
+            btn.className = 'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold transition cursor-pointer';
+          }
+        }
+      });
+      lucide.createIcons();
+      const sb = document.getElementById('admin-sidebar');
+      if (sb && !sb.classList.contains('-translate-x-full')) {
+        sb.classList.add('-translate-x-full');
+      }
+    }
+
+    function toggleMobileSidebar() {
+      const sb = document.getElementById('admin-sidebar');
+      if (sb) sb.classList.toggle('-translate-x-full');
+    }
+
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('hidden');
+    }
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    }
+
+    function openModalAddGuru() {
+      populateRombelDropdowns();
+      const elNama = document.getElementById('guru-nama');
+      if (elNama) elNama.value = '';
+      const elNip = document.getElementById('guru-nip');
+      if (elNip) elNip.value = '';
+      const elEmail = document.getElementById('guru-email');
+      if (elEmail) elEmail.value = '';
+      const elMapel = document.getElementById('guru-mapel');
+      if (elMapel) elMapel.value = '';
+      const elWali = document.getElementById('guru-rombelwali');
+      if (elWali) elWali.value = '';
+      const elPwd = document.getElementById('guru-password');
+      if (elPwd) elPwd.value = 'cakap2026';
+      openModal('modal-add-guru');
+    }
+
+    function openModalAddRombel() {
+      populateRombelDropdowns();
+      const elId = document.getElementById('rombel-edit-id');
+      if (elId) elId.value = '';
+      const elNama = document.getElementById('rombel-nama');
+      if (elNama) elNama.value = '';
+      const elTingkat = document.getElementById('rombel-tingkat');
+      if (elTingkat) elTingkat.value = '1';
+      autoSetFase();
+      const elTitle = document.getElementById('modal-rombel-title');
+      if (elTitle) elTitle.textContent = 'Buat Rombel Baru';
+      openModal('modal-add-rombel');
+    }
+
+    function showToast(msg) {
+      if (window.SicakapDB && typeof window.SicakapDB.showToast === 'function') {
+        window.SicakapDB.showToast(msg);
+      } else {
+        const toast = document.getElementById('toast');
+        const text = document.getElementById('toast-message');
+        if (text) text.textContent = msg;
+        if (toast) {
+          toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+          setTimeout(() => {
+            toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+          }, 3500);
+        }
+      }
+    }
+
+    // Initialize Admin Data & Sync from LocalStorage
+    function initAdminData(manualRefresh = false) {
+      // Sync sicakap_banksoal <-> sicakap_soal
+      try {
+        const rawBankSoal = localStorage.getItem('sicakap_banksoal');
+        const rawSoal = localStorage.getItem('sicakap_soal');
+        if (rawBankSoal && !rawSoal) {
+          localStorage.setItem('sicakap_soal', rawBankSoal);
+        } else if (rawSoal && !rawBankSoal) {
+          localStorage.setItem('sicakap_banksoal', rawSoal);
+        }
+      } catch (e) {}
+
+      SicakapDB.init();
+      renderStats();
+      renderGuruTable();
+      renderRombelView();
+      renderAdminSiswaTable();
+      renderJadwalTable();
+      renderMapelFilterTabs();
+      renderBankSoal();
+      renderLiveScoreTable();
+      populateRombelDropdowns();
+      renderProfilSekolah();
+      renderAkunAdmin();
+      if (manualRefresh) {
+        showToast("Data berhasil disinkronkan");
+      }
+    }
+
+    function renderStats() {
+      const gurus = SicakapDB.getGuru();
+      const rombels = SicakapDB.getRombel();
+      const siswas = SicakapDB.getSiswa();
+      const jadwals = SicakapDB.getJadwal();
+      const soals = SicakapDB.getSoal();
+
+      // Mirror sicakap_banksoal
+      try {
+        localStorage.setItem('sicakap_banksoal', JSON.stringify(soals));
+      } catch (e) {}
+
+      const elGuru = document.getElementById('stat-total-guru');
+      if (elGuru) elGuru.textContent = gurus.length;
+      const elRombel = document.getElementById('stat-total-rombel');
+      if (elRombel) elRombel.textContent = rombels.length;
+      const elSiswa = document.getElementById('stat-total-siswa');
+      if (elSiswa) elSiswa.textContent = siswas.length;
+      const elJadwal = document.getElementById('stat-total-jadwal');
+      if (elJadwal) elJadwal.textContent = jadwals.length;
+      const elSoal = document.getElementById('stat-total-soal');
+      if (elSoal) elSoal.textContent = soals.length;
+
+      const bgGuru = document.getElementById('badge-count-guru');
+      if (bgGuru) bgGuru.textContent = gurus.length;
+      const bgRombel = document.getElementById('badge-count-rombel');
+      if (bgRombel) bgRombel.textContent = rombels.length;
+      const bgSiswa = document.getElementById('badge-count-siswa');
+      if (bgSiswa) bgSiswa.textContent = siswas.length;
+      const bgJadwal = document.getElementById('badge-count-jadwal');
+      if (bgJadwal) bgJadwal.textContent = jadwals.length;
+      const bgSoal = document.getElementById('badge-count-soal');
+      if (bgSoal) bgSoal.textContent = soals.length;
+    }
+
+    // ==============================================================
+    // FITUR BULK ACTION (HAPUS SEKALIGUS & KOSONGKAN SEMUA)
+    // ==============================================================
+    const selectedItems = {
+      guru: new Set(),
+      rombel: new Set(),
+      siswa: new Set(),
+      jadwal: new Set(),
+      livescore: new Set(),
+      soal: new Set()
+    };
+
+    function toggleSelectAll(type, isChecked) {
+      const checkboxes = document.querySelectorAll(`.check-item-${type}`);
+      checkboxes.forEach(cb => {
+        cb.checked = isChecked;
+        if (isChecked) {
+          selectedItems[type].add(String(cb.value));
+        } else {
+          selectedItems[type].delete(String(cb.value));
+        }
+      });
+      updateBulkToolbar(type);
+      if (type === 'rombel') renderRombelView();
+    }
+
+    function onItemCheckChange(type, id, isChecked) {
+      if (isChecked) {
+        selectedItems[type].add(String(id));
+      } else {
+        selectedItems[type].delete(String(id));
+      }
+      const allCheckboxes = document.querySelectorAll(`.check-item-${type}`);
+      const checkAll = document.getElementById(`check-all-${type}`);
+      if (checkAll && allCheckboxes.length > 0) {
+        checkAll.checked = Array.from(allCheckboxes).every(cb => cb.checked);
+      }
+      updateBulkToolbar(type);
+      if (type === 'rombel') renderRombelView();
+    }
+
+    function deselectAll(type) {
+      selectedItems[type].clear();
+      const checkAll = document.getElementById(`check-all-${type}`);
+      if (checkAll) checkAll.checked = false;
+      const checkboxes = document.querySelectorAll(`.check-item-${type}`);
+      checkboxes.forEach(cb => cb.checked = false);
+      updateBulkToolbar(type);
+      if (type === 'rombel') renderRombelView();
+    }
+
+    function updateBulkToolbar(type) {
+      const count = selectedItems[type].size;
+      const bar = document.getElementById(`bulk-bar-${type}`);
+      const countLabel = document.getElementById(`bulk-count-${type}`);
+      const btnLabel = document.getElementById(`btn-label-bulk-${type}`);
+
+      const typeLabels = {
+        guru: 'guru',
+        rombel: 'rombel',
+        siswa: 'murid',
+        jadwal: 'jadwal',
+        livescore: 'sesi murid',
+        soal: 'butir soal'
+      };
+      const label = typeLabels[type] || 'item';
+
+      if (bar) {
+        if (count > 0) {
+          bar.classList.remove('hidden');
+          bar.classList.add('flex');
+          if (countLabel) countLabel.textContent = `${count} ${label} terpilih`;
+          if (btnLabel) btnLabel.textContent = type === 'livescore' ? `Reset Sesi Terpilih (${count})` : `Hapus Terpilih (${count})`;
+        } else {
+          bar.classList.add('hidden');
+          bar.classList.remove('flex');
+          const checkAll = document.getElementById(`check-all-${type}`);
+          if (checkAll) checkAll.checked = false;
+        }
+      }
+    }
+
+    function confirmBulkDelete(type) {
+      const count = selectedItems[type].size;
+      if (count === 0) return;
+
+      const typeNames = {
+        guru: 'Guru',
+        rombel: 'Rombel',
+        siswa: 'Siswa',
+        jadwal: 'Jadwal Ulangan',
+        livescore: 'Sesi Ujian',
+        soal: 'Butir Soal'
+      };
+      const name = typeNames[type] || 'Data';
+
+      const actionText = type === 'livescore' 
+        ? `Yakin ingin mereset ${count} sesi ujian murid terpilih? Pengerjaan akan dikembalikan ke status "Belum Ujian".`
+        : `Yakin ingin menghapus ${count} data ${name} terpilih secara permanen?`;
+
+      if (!confirm(actionText)) return;
+
+      const ids = Array.from(selectedItems[type]);
+      let deleted = 0;
+
+      if (type === 'guru') {
+        deleted = SicakapDB.bulkDeleteGuru(ids);
+      } else if (type === 'rombel') {
+        deleted = SicakapDB.bulkDeleteRombel(ids);
+      } else if (type === 'siswa') {
+        deleted = SicakapDB.bulkDeleteSiswa(ids);
+      } else if (type === 'jadwal') {
+        deleted = SicakapDB.bulkDeleteJadwal(ids);
+      } else if (type === 'soal') {
+        deleted = SicakapDB.bulkDeleteSoal(ids);
+      } else if (type === 'livescore') {
+        deleted = SicakapDB.bulkDeleteLiveScores(ids);
+      }
+
+      selectedItems[type].clear();
+      updateBulkToolbar(type);
+      initAdminData();
+      showToast(`🗑️ ${deleted} data ${name} berhasil ${type === 'livescore' ? 'direset' : 'dihapus'}!`);
+    }
+
+    function confirmClearAll(type) {
+      const typeNames = {
+        guru: 'Guru',
+        rombel: 'Rombel',
+        siswa: 'Siswa',
+        jadwal: 'Jadwal Ulangan',
+        livescore: 'Sesi Ujian',
+        soal: 'Butir Soal'
+      };
+      const name = typeNames[type] || 'Data';
+
+      let total = 0;
+      if (type === 'guru') total = SicakapDB.getGuru().length;
+      else if (type === 'rombel') total = SicakapDB.getRombel().length;
+      else if (type === 'siswa') total = SicakapDB.getSiswa().length;
+      else if (type === 'jadwal') total = SicakapDB.getJadwal().length;
+      else if (type === 'soal') total = SicakapDB.getSoal().length;
+      else if (type === 'livescore') total = SicakapDB.getLiveScores().length;
+
+      if (total === 0) {
+        showToast(`Tabel ${name} sudah kosong.`);
+        return;
+      }
+
+      const warnText = `⚠️ PERINGATAN KOSONGKAN SEMUA:\nYakin ingin menghapus SELURUH (${total}) data ${name} secara permanen?\nTindakan ini tidak dapat dibatalkan!`;
+      if (!confirm(warnText)) return;
+
+      let cleared = 0;
+      if (type === 'guru') cleared = SicakapDB.clearAllGuru();
+      else if (type === 'rombel') cleared = SicakapDB.clearAllRombel();
+      else if (type === 'siswa') cleared = SicakapDB.clearAllSiswa();
+      else if (type === 'jadwal') cleared = SicakapDB.clearAllJadwal();
+      else if (type === 'soal') cleared = SicakapDB.clearAllSoal();
+      else if (type === 'livescore') cleared = SicakapDB.clearAllLiveScores();
+
+      selectedItems[type].clear();
+      updateBulkToolbar(type);
+      initAdminData();
+      showToast(`💥 Seluruh data ${name} (${cleared} item) berhasil dikosongkan!`);
+    }
+
+    // 1. GURU MANAGEMENT
+    function renderGuruTable() {
+      const gurus = SicakapDB.getGuru();
+      const rombels = SicakapDB.getRombel();
+      const tbody = document.getElementById('table-guru-body');
+      const keyword = (document.getElementById('search-guru')?.value || '').toLowerCase();
+
+      const filtered = gurus.filter(g => 
+        g.nama.toLowerCase().includes(keyword) || 
+        g.nip.toLowerCase().includes(keyword) ||
+        g.email.toLowerCase().includes(keyword)
+      );
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Tidak ada data guru yang cocok.</td></tr>`;
+        updateBulkToolbar('guru');
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(g => {
+        const rombel = rombels.find(r => r.id === g.rombelWali || r.namaRombel === g.rombelWali);
+        const rombelName = rombel ? rombel.namaRombel : (g.rombelWali || '-');
+        const isChecked = selectedItems.guru.has(String(g.id));
+
+        return `
+          <tr class="hover:bg-slate-50 transition ${isChecked ? 'bg-rose-50/40' : ''}">
+            <td class="py-3.5 px-3 text-center">
+              <input type="checkbox" class="check-item-guru w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${g.id}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('guru', '${g.id}', this.checked)">
+            </td>
+            <td class="py-3.5 px-4 sm:px-6">
+              <p class="font-black text-slate-900">${g.nama}</p>
+              <p class="text-[11px] text-slate-400 font-mono">NIP: ${g.nip}</p>
+            </td>
+            <td class="py-3.5 px-4 font-mono text-slate-600">${g.email}</td>
+            <td class="py-3.5 px-4 font-bold text-slate-800">${g.mapel}</td>
+            <td class="py-3.5 px-4">
+              <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                ${rombelName}
+              </span>
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              <span class="font-mono text-slate-500 font-bold">••••••••</span>
+            </td>
+            <td class="py-3.5 px-4 text-center space-x-1">
+              <button onclick="resetGuruPassword('${g.id}', '${g.nama}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold border border-amber-200 transition cursor-pointer" title="Reset Password ke cakap2026">
+                🔑 Reset
+              </button>
+              <button onclick="deleteGuru('${g.id}', '${g.nama}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition cursor-pointer" title="Hapus Guru">
+                🗑️
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      updateBulkToolbar('guru');
+      lucide.createIcons();
+    }
+
+    function handleSaveGuru(e) {
+      e.preventDefault();
+      const nama = document.getElementById('guru-nama').value.trim();
+      const nip = document.getElementById('guru-nip').value.trim();
+      const email = document.getElementById('guru-email').value.trim();
+      const mapel = document.getElementById('guru-mapel').value.trim();
+      const rombelWali = document.getElementById('guru-rombelwali').value;
+      const password = document.getElementById('guru-password').value.trim() || 'cakap2026';
+
+      SicakapDB.addGuru({
+        nama,
+        nip,
+        email,
+        mapel,
+        rombelWali,
+        password
+      });
+
+      closeModal('modal-add-guru');
+      document.getElementById('guru-nama').value = '';
+      document.getElementById('guru-nip').value = '';
+      document.getElementById('guru-email').value = '';
+      document.getElementById('guru-mapel').value = '';
+      
+      initAdminData();
+      showToast(`Guru "${nama}" berhasil ditambahkan & tersimpan ke LocalStorage!`);
+    }
+
+    function resetGuruPassword(id, nama) {
+      SicakapDB.updateGuru(id, { password: 'cakap2026' });
+      showToast(`Password akun guru "${nama}" berhasil direset ke "cakap2026"!`);
+    }
+
+    function deleteGuru(id, nama) {
+      if (confirm(`Yakin ingin menghapus akun guru "${nama}"?`)) {
+        SicakapDB.deleteGuru(id);
+        initAdminData();
+        showToast(`Akun guru "${nama}" telah dihapus!`);
+      }
+    }
+
+    // 2. ROMBEL MANAGEMENT
+    function renderRombelView() {
+      const rombels = SicakapDB.getRombel();
+      const gurus = SicakapDB.getGuru();
+      const container = document.getElementById('rombel-grid-container');
+
+      if (rombels.length === 0) {
+        container.innerHTML = `<div class="col-span-full py-10 text-center text-slate-400 font-bold">Belum ada Rombel. Silakan klik "+ Buat Rombel Baru".</div>`;
+        updateBulkToolbar('rombel');
+        return;
+      }
+
+      container.innerHTML = rombels.map(r => {
+        const wali = gurus.find(g => g.id === r.waliKelasId);
+        const waliName = wali ? wali.nama : 'Belum Ditentukan';
+        const isChecked = selectedItems.rombel.has(String(r.id));
+
+        return `
+          <div class="p-5 rounded-3xl bg-white border ${isChecked ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/20' : 'border-slate-200'} shadow-2xs space-y-3 hover:border-blue-500 transition relative">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" class="check-item-rombel w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${r.id}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('rombel', '${r.id}', this.checked)">
+                <span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black">${r.fase}</span>
+              </div>
+              <span class="text-xs text-slate-400 font-mono font-bold">Kls ${r.tingkat}</span>
+            </div>
+            <div>
+              <h3 class="font-black text-lg text-slate-900">${r.namaRombel}</h3>
+              <p class="text-xs text-slate-500 font-semibold">Wali: <strong class="text-slate-800">${waliName}</strong></p>
+            </div>
+            <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1 text-xs">
+              <span class="text-slate-600 font-bold">👥 ${r.jumlahSiswa || 0} Murid</span>
+              <div class="flex items-center gap-1">
+                <button onclick="SicakapExport.printKartuUjian({ rombelId: '${r.id}' })" class="px-2 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] cursor-pointer" title="Cetak Kartu Ujian Kelas Ini">🖨️ Kartu</button>
+                <button onclick="SicakapExport.printBeritaAcaraDaftarHadir({ rombelId: '${r.id}', mapelName: 'Asesmen CBT SD' })" class="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-[11px] cursor-pointer" title="Cetak Berita Acara &amp; Hadir">📄 Hadir</button>
+                <button onclick="editRombel('${r.id}')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer" title="Edit Rombel">✏️</button>
+                <button onclick="deleteRombel('${r.id}', '${r.namaRombel}')" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold cursor-pointer" title="Hapus Rombel">🗑️</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      updateBulkToolbar('rombel');
+      lucide.createIcons();
+    }
+
+    function autoSetFase() {
+      const tingkat = parseInt(document.getElementById('rombel-tingkat').value);
+      const inputFase = document.getElementById('rombel-fase');
+      if (tingkat <= 2) inputFase.value = 'Fase A';
+      else if (tingkat <= 4) inputFase.value = 'Fase B';
+      else inputFase.value = 'Fase C';
+    }
+
+    function handleSaveRombel(e) {
+      e.preventDefault();
+      const editId = document.getElementById('rombel-edit-id').value;
+      const namaRombel = document.getElementById('rombel-nama').value.trim();
+      const tingkat = document.getElementById('rombel-tingkat').value;
+      const fase = document.getElementById('rombel-fase').value;
+      const waliKelasId = document.getElementById('rombel-wali').value;
+
+      if (editId) {
+        SicakapDB.updateRombel(editId, { namaRombel, tingkat, fase, waliKelasId });
+        showToast(`Rombel "${namaRombel}" berhasil diperbarui!`);
+      } else {
+        SicakapDB.addRombel({ namaRombel, tingkat, fase, waliKelasId });
+        showToast(`Rombel baru "${namaRombel}" berhasil dibuat!`);
+      }
+
+      closeModal('modal-add-rombel');
+      document.getElementById('rombel-edit-id').value = '';
+      document.getElementById('rombel-nama').value = '';
+      initAdminData();
+    }
+
+    function editRombel(id) {
+      const rombel = SicakapDB.getRombel().find(r => r.id === id);
+      if (!rombel) return;
+      document.getElementById('rombel-edit-id').value = rombel.id;
+      document.getElementById('rombel-nama').value = rombel.namaRombel;
+      document.getElementById('rombel-tingkat').value = rombel.tingkat;
+      document.getElementById('rombel-fase').value = rombel.fase;
+      document.getElementById('rombel-wali').value = rombel.waliKelasId;
+      document.getElementById('modal-rombel-title').textContent = 'Edit Rombel SD';
+      openModal('modal-add-rombel');
+    }
+
+    function deleteRombel(id, nama) {
+      if (confirm(`Yakin ingin menghapus rombel "${nama}"?`)) {
+        SicakapDB.deleteRombel(id);
+        initAdminData();
+        showToast(`Rombel "${nama}" telah dihapus!`);
+      }
+    }
+
+    // 2.5 SISWA DIRECTORY (ADMIN FULL VISIBILITY)
+    function renderAdminSiswaTable() {
+      const siswas = SicakapDB.getSiswa();
+      const rombels = SicakapDB.getRombel();
+      const tbody = document.getElementById('table-admin-siswa-body');
+      if (!tbody) return;
+      const keyword = (document.getElementById('admin-search-siswa')?.value || '').toLowerCase();
+      const filterRombel = document.getElementById('admin-filter-rombel')?.value || 'ALL';
+
+      let filtered = siswas.filter(s => 
+        s.nama.toLowerCase().includes(keyword) || 
+        s.nisn.toLowerCase().includes(keyword)
+      );
+
+      if (filterRombel !== 'ALL') {
+        filtered = filtered.filter(s => s.rombelId === filterRombel);
+      }
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400 font-bold">Tidak ada data murid yang cocok.</td></tr>`;
+        updateBulkToolbar('siswa');
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(s => {
+        const rombel = rombels.find(r => r.id === s.rombelId);
+        const rombelName = rombel ? rombel.namaRombel : '-';
+        const isChecked = selectedItems.siswa.has(String(s.id));
+
+        return `
+          <tr class="hover:bg-slate-50 transition ${isChecked ? 'bg-rose-50/40' : ''}">
+            <td class="py-3.5 px-3 text-center">
+              <input type="checkbox" class="check-item-siswa w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${s.id}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('siswa', '${s.id}', this.checked)">
+            </td>
+            <td class="py-3.5 px-4 sm:px-6">
+              <p class="font-black text-slate-900">${s.nama}</p>
+              <p class="text-[11px] text-slate-400 font-mono">NISN: ${s.nisn}</p>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">
+                ${rombelName}
+              </span>
+            </td>
+            <td class="py-3.5 px-4">
+              <div class="flex items-center gap-1.5 font-mono">
+                <span class="font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">${s.password}</span>
+                <button onclick="navigator.clipboard.writeText('${s.password}').then(() => showToast('Password disalin!'))" class="text-slate-400 hover:text-slate-600 cursor-pointer" title="Salin Password">📋</button>
+              </div>
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${s.statusUjian === 'Sedang Mengerjakan' ? 'bg-blue-100 text-blue-800 animate-pulse' : (s.statusUjian === 'Selesai' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600')}">
+                ${s.statusUjian || 'Belum Ujian'}
+              </span>
+            </td>
+            <td class="py-3.5 px-4 text-center space-x-1">
+              <button onclick="SicakapExport.printKartuUjian({ rombelId: '${s.rombelId}' })" class="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-bold text-xs transition cursor-pointer" title="Cetak Kartu Siswa">
+                🖨️ Kartu
+              </button>
+              <button onclick="resetAdminSiswaPassword('${s.id}', '${s.nama}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs transition cursor-pointer" title="Reset Password Siswa">
+                🔑 Reset Sandi
+              </button>
+              <button onclick="deleteAdminSiswa('${s.id}', '${s.nama}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition cursor-pointer" title="Hapus Siswa">
+                🗑️
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      updateBulkToolbar('siswa');
+      lucide.createIcons();
+    }
+
+    function resetAdminSiswaPassword(id, nama) {
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      const newPwd = `CAKAP-${randomNum}`;
+      SicakapDB.updateSiswa(id, { password: newPwd });
+      renderAdminSiswaTable();
+      showToast(`Password siswa "${nama}" berhasil direset ke "${newPwd}"!`);
+    }
+
+    function deleteAdminSiswa(id, nama) {
+      if (confirm(`Yakin ingin menghapus data murid "${nama}"?`)) {
+        SicakapDB.deleteSiswa(id);
+        initAdminData();
+        showToast(`Data murid "${nama}" telah dihapus!`);
+      }
+    }
+
+    // 3. JADWAL ULANGAN MANAGEMENT
+    function renderJadwalTable() {
+      const jadwals = SicakapDB.getJadwal();
+      const rombels = SicakapDB.getRombel();
+      const tbody = document.getElementById('table-jadwal-body');
+
+      if (jadwals.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Belum ada jadwal ulangan.</td></tr>`;
+        updateBulkToolbar('jadwal');
+        return;
+      }
+
+      tbody.innerHTML = jadwals.map(j => {
+        const rombel = rombels.find(r => r.id === j.rombelId);
+        const rombelName = rombel ? rombel.namaRombel : (j.rombelId || '-');
+        const isAktif = j.status === 'Aktif';
+        const isChecked = selectedItems.jadwal.has(String(j.id));
+
+        return `
+          <tr class="hover:bg-slate-50 transition ${isChecked ? 'bg-rose-50/40' : ''}">
+            <td class="py-3.5 px-3 text-center">
+              <input type="checkbox" class="check-item-jadwal w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${j.id}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('jadwal', '${j.id}', this.checked)">
+            </td>
+            <td class="py-3.5 px-4 sm:px-6">
+              <p class="font-black text-slate-900">${j.namaUlangan}</p>
+              <p class="text-[11px] text-slate-500 font-bold">${j.mapel}</p>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="px-2.5 py-0.5 rounded-full bg-slate-100 font-bold text-slate-800 text-[11px]">
+                ${rombelName}
+              </span>
+            </td>
+            <td class="py-3.5 px-4">
+              <p class="font-bold text-slate-800">${j.tanggal} • ${j.jamMulai} WIB</p>
+              <p class="text-[11px] text-slate-400 font-semibold">Durasi: ${j.durasiMenit} Menit</p>
+            </td>
+            <td class="py-3.5 px-4 text-center font-mono font-black text-amber-700 bg-amber-50/50 rounded-xl">
+              ${j.token}
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black ${isAktif ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'}">
+                ${isAktif ? '🟢 Aktif' : '⚪ Nonaktif'}
+              </span>
+            </td>
+            <td class="py-3.5 px-4 text-center space-x-1">
+              <button onclick="editJadwal('${j.id}')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition cursor-pointer" title="Edit Jadwal">
+                ✏️
+              </button>
+              <button onclick="deleteJadwal('${j.id}', '${j.namaUlangan}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold transition cursor-pointer" title="Hapus Jadwal">
+                🗑️
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      updateBulkToolbar('jadwal');
+      lucide.createIcons();
+    }
+
+    function openModalAddJadwal() {
+      populateRombelDropdowns();
+      document.getElementById('jadwal-edit-id').value = '';
+      document.getElementById('jadwal-nama').value = '';
+      document.getElementById('jadwal-mapel').value = 'Matematika SD';
+      document.getElementById('jadwal-tanggal').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('jadwal-jam').value = '08:00';
+      document.getElementById('jadwal-durasi').value = 60;
+      document.getElementById('jadwal-token').value = SicakapDB.generateToken();
+      document.getElementById('jadwal-status').value = 'Aktif';
+      document.getElementById('modal-jadwal-title').textContent = 'Tambah Jadwal Ulangan Baru';
+      openModal('modal-add-jadwal');
+    }
+
+    function randomizeJadwalToken() {
+      document.getElementById('jadwal-token').value = SicakapDB.generateToken();
+    }
+
+    function handleSaveJadwal(e) {
+      e.preventDefault();
+      const editId = document.getElementById('jadwal-edit-id').value;
+      const namaUlangan = document.getElementById('jadwal-nama').value.trim();
+      const mapel = document.getElementById('jadwal-mapel').value.trim();
+      const rombelId = document.getElementById('jadwal-rombel').value;
+      const tanggal = document.getElementById('jadwal-tanggal').value;
+      const jamMulai = document.getElementById('jadwal-jam').value;
+      const durasiMenit = parseInt(document.getElementById('jadwal-durasi').value) || 60;
+      const token = document.getElementById('jadwal-token').value.trim().toUpperCase();
+      const status = document.getElementById('jadwal-status').value;
+
+      if (editId) {
+        SicakapDB.updateJadwal(editId, { namaUlangan, mapel, rombelId, tanggal, jamMulai, durasiMenit, token, status });
+        showToast(`Jadwal "${namaUlangan}" berhasil diperbarui!`);
+      } else {
+        SicakapDB.addJadwal({ namaUlangan, mapel, rombelId, tanggal, jamMulai, durasiMenit, token, status });
+        showToast(`Jadwal ulangan baru "${namaUlangan}" berhasil dibuat!`);
+      }
+
+      closeModal('modal-add-jadwal');
+      document.getElementById('jadwal-edit-id').value = '';
+      document.getElementById('jadwal-nama').value = '';
+      initAdminData();
+    }
+
+    function editJadwal(id) {
+      const jadwal = SicakapDB.getJadwal().find(j => j.id === id);
+      if (!jadwal) return;
+      document.getElementById('jadwal-edit-id').value = jadwal.id;
+      document.getElementById('jadwal-nama').value = jadwal.namaUlangan;
+      document.getElementById('jadwal-mapel').value = jadwal.mapel;
+      document.getElementById('jadwal-rombel').value = jadwal.rombelId;
+      document.getElementById('jadwal-tanggal').value = jadwal.tanggal;
+      document.getElementById('jadwal-jam').value = jadwal.jamMulai;
+      document.getElementById('jadwal-durasi').value = jadwal.durasiMenit;
+      document.getElementById('jadwal-token').value = jadwal.token;
+      document.getElementById('jadwal-status').value = jadwal.status;
+      document.getElementById('modal-jadwal-title').textContent = 'Edit Jadwal Ulangan SD';
+      openModal('modal-add-jadwal');
+    }
+
+    function deleteJadwal(id, nama) {
+      if (confirm(`Yakin ingin menghapus jadwal "${nama}"?`)) {
+        SicakapDB.deleteJadwal(id);
+        initAdminData();
+        showToast(`Jadwal "${nama}" telah dihapus!`);
+      }
+    }
+
+    // 4. LIVE SCORE & MONITORING (REAL-TIME DATA SYNC)
+    function renderLiveScoreTable() {
+      let siswas = SicakapDB.getSiswa();
+      const rombels = SicakapDB.getRombel();
+      const liveScores = SicakapDB.getLiveScores();
+      const tbody = document.getElementById('table-livescore-body');
+
+      const filterRombel = document.getElementById('admin-livescore-rombel') ? document.getElementById('admin-livescore-rombel').value : 'ALL';
+      if (filterRombel && filterRombel !== 'ALL') {
+        siswas = siswas.filter(s => s.rombelId === filterRombel);
+      }
+
+      if (siswas.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Belum ada murid pada filter yang dipilih.</td></tr>`;
+        updateBulkToolbar('livescore');
+        return;
+      }
+
+      tbody.innerHTML = siswas.map(s => {
+        const rombel = rombels.find(r => r.id === s.rombelId);
+        const rombelName = rombel ? rombel.namaRombel : '-';
+        const live = liveScores.find(l => l.nisn === s.nisn) || {
+          skor: 0,
+          terjawab: 0,
+          totalSoal: 4,
+          status: s.statusUjian || 'Belum Ujian'
+        };
+
+        const currentStatus = s.statusUjian || live.status || 'Belum Ujian';
+        let statusBadge = 'bg-slate-100 text-slate-600';
+        if (currentStatus === 'Sedang Mengerjakan') statusBadge = 'bg-blue-100 text-blue-800 border border-blue-200 animate-pulse';
+        else if (currentStatus === 'Selesai') statusBadge = 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+        else if (currentStatus === 'Terkunci') statusBadge = 'bg-rose-100 text-rose-800 border border-rose-200 font-black';
+
+        const isChecked = selectedItems.livescore.has(String(s.nisn));
+
+        return `
+          <tr class="hover:bg-slate-50 transition ${isChecked ? 'bg-rose-50/40' : ''}">
+            <td class="py-3.5 px-3 text-center">
+              <input type="checkbox" class="check-item-livescore w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${s.nisn}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('livescore', '${s.nisn}', this.checked)">
+            </td>
+            <td class="py-3.5 px-4 sm:px-6">
+              <p class="font-black text-slate-900">${s.nama}</p>
+              <p class="text-[11px] text-slate-400 font-mono">NISN: ${s.nisn}</p>
+            </td>
+            <td class="py-3.5 px-4 font-bold text-slate-800">${rombelName}</td>
+            <td class="py-3.5 px-4 text-center">
+              <span class="inline-block px-2.5 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 font-mono font-black text-indigo-700 text-xs">
+                ${live.skor} Poin
+              </span>
+              <p class="text-[10px] text-slate-400 font-semibold mt-0.5">${live.terjawab}/${live.totalSoal} Soal</p>
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              <span class="px-2.5 py-1 rounded-full text-[11px] font-black ${statusBadge}">
+                ${currentStatus}
+              </span>
+            </td>
+            <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+              ${s.password || '-'}
+            </td>
+            <td class="py-3.5 px-4 text-center">
+              <button onclick="resetSiswaSesi('${s.id}', '${s.nama}')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer" title="Reset Sesi Pengerjaan">
+                🔄 Reset Sesi
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      updateBulkToolbar('livescore');
+      lucide.createIcons();
+    }
+
+    function resetSiswaSesi(id, nama) {
+      const siswa = SicakapDB.getSiswa().find(s => s.id === id || s.nisn === id);
+      SicakapDB.updateSiswa(id, { statusUjian: 'Belum Ujian' });
+      if (siswa) {
+        SicakapDB.clearExamProgress(siswa.nisn);
+      }
+      initAdminData();
+      showToast(`Sesi ujian siswa "${nama}" berhasil direset ke "Belum Ujian"!`);
+    }
+
+    // Populate Dynamic Dropdowns
+    function populateRombelDropdowns() {
+      const rombels = SicakapDB.getRombel();
+      const gurus = SicakapDB.getGuru();
+
+      // Guru modal wali rombel select
+      const selGuruWali = document.getElementById('guru-rombelwali');
+      if (selGuruWali) {
+        selGuruWali.innerHTML = '<option value="">-- Bukan Wali Kelas --</option>' + 
+          rombels.map(r => `<option value="${r.id}">${r.namaRombel} (${r.fase})</option>`).join('');
+      }
+
+      // Rombel modal wali select
+      const selWali = document.getElementById('rombel-wali');
+      if (selWali) {
+        selWali.innerHTML = gurus.map(g => `<option value="${g.id}">${g.nama} (${g.mapel})</option>`).join('');
+      }
+
+      // Jadwal modal rombel select
+      const selJadwalRombel = document.getElementById('jadwal-rombel');
+      if (selJadwalRombel) {
+        selJadwalRombel.innerHTML = rombels.map(r => `<option value="${r.id}">${r.namaRombel} (${r.fase})</option>`).join('');
+      }
+
+      // Admin filter rombel select
+      const selAdminFilter = document.getElementById('admin-filter-rombel');
+      if (selAdminFilter) {
+        const curVal = selAdminFilter.value;
+        selAdminFilter.innerHTML = '<option value="ALL">Semua Rombel</option>' + 
+          rombels.map(r => `<option value="${r.id}">${r.namaRombel}</option>`).join('');
+        if (curVal) selAdminFilter.value = curVal;
+      }
+
+      // Admin livescore filter rombel select
+      const selLiveRombel = document.getElementById('admin-livescore-rombel');
+      if (selLiveRombel) {
+        const curVal = selLiveRombel.value;
+        selLiveRombel.innerHTML = '<option value="ALL">Semua Rombel</option>' + 
+          rombels.map(r => `<option value="${r.id}">${r.namaRombel}</option>`).join('');
+        if (curVal) selLiveRombel.value = curVal;
+      }
+
+      // Populate Soal Mapel Dropdown
+      populateSoalMapelDropdown();
+    }
+
+    // ==============================================================
+    // 6. BANK SOAL SD (PILIHAN GANDA A-D, MAPEL, & BULK IMPORT)
+    // ==============================================================
+    let activeFilterMapel = 'ALL';
+    let currentParsedWordSoal = [];
+    let currentParsedCsvSoal = [];
+
+    // Render Filter Tabs Mata Pelajaran SD
+    function renderMapelFilterTabs() {
+      const container = document.getElementById('admin-mapel-filter-tabs');
+      const badge = document.getElementById('soal-count-badge');
+      if (!container) return;
+
+      const mapels = SicakapDB.getMapel();
+      const allSoal = SicakapDB.getSoal();
+      if (badge) badge.textContent = `${allSoal.length} Butir Soal Terdaftar`;
+
+      const countMap = {};
+      allSoal.forEach(s => {
+        const key = s.mapel || 'Lainnya';
+        countMap[key] = (countMap[key] || 0) + 1;
+      });
+
+      const isAllActive = activeFilterMapel === 'ALL';
+      let html = `
+        <button type="button" onclick="setActiveFilterMapel('ALL')" 
+          class="px-3.5 py-1.5 rounded-2xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+            isAllActive 
+              ? 'bg-indigo-600 text-white shadow-xs' 
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          }">
+          <span>📚 Semua Mapel</span>
+          <span class="px-1.5 py-0.2 rounded-full text-[10px] ${isAllActive ? 'bg-indigo-500 text-white' : 'bg-slate-200 text-slate-700'}">${allSoal.length}</span>
+        </button>
+      `;
+
+      mapels.forEach(m => {
+        const isActive = activeFilterMapel === m.nama;
+        const cnt = countMap[m.nama] || 0;
+        html += `
+          <button type="button" onclick="setActiveFilterMapel('${m.nama}')" 
+            class="px-3 py-1.5 rounded-2xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+              isActive 
+                ? 'bg-purple-600 text-white shadow-xs font-black' 
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }">
+            <span>${m.icon || '📚'} ${m.nama}</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] ${isActive ? 'bg-purple-500 text-white' : 'bg-slate-200 text-slate-700'}">${cnt}</span>
+          </button>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function setActiveFilterMapel(mapelName) {
+      activeFilterMapel = mapelName;
+      renderMapelFilterTabs();
+      renderBankSoal();
+    }
+
+    // Render Bank Soal SD Table (Wireframe UI/UX Pro)
+    function renderBankSoal() {
+      const tbody = document.getElementById('admin-bank-table-body');
+      if (!tbody) return;
+
+      const allSoal = SicakapDB.getSoal();
+      const filterKelas = document.getElementById('filter-soal-kelas')?.value || 'ALL';
+      const searchQuery = (document.getElementById('search-soal')?.value || '').toLowerCase().trim();
+
+      const filtered = allSoal.filter(s => {
+        if (activeFilterMapel !== 'ALL' && s.mapel !== activeFilterMapel) return false;
+        if (filterKelas !== 'ALL' && String(s.tingkat) !== String(filterKelas)) return false;
+        if (searchQuery) {
+          const matchPertanyaan = (s.pertanyaan || '').toLowerCase().includes(searchQuery);
+          const matchWacana = (s.wacana || '').toLowerCase().includes(searchQuery);
+          const matchCp = (s.cpTp || '').toLowerCase().includes(searchQuery);
+          const matchMapel = (s.mapel || '').toLowerCase().includes(searchQuery);
+          if (!matchPertanyaan && !matchWacana && !matchCp && !matchMapel) return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="py-12 text-center text-slate-400 font-bold space-y-2">
+              <p class="text-3xl">📝</p>
+              <p class="text-slate-600 font-black">Tidak ada soal ditemukan pada filter ini.</p>
+              <p class="text-xs font-medium">Klik <strong>"+ Buat Soal SD Baru"</strong> atau <strong>"📥 Import Word"</strong> untuk menambahkan butir soal.</p>
+            </td>
+          </tr>
+        `;
+        updateBulkToolbar('soal');
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((s, idx) => {
+        const kunciStr = Array.isArray(s.kunci) ? s.kunci.join(', ') : (s.kunci || '-');
+        const isChecked = selectedItems.soal.has(String(s.id));
+        return `
+          <tr class="hover:bg-slate-50/80 transition ${isChecked ? 'bg-rose-50/40' : ''}">
+            <td class="py-3.5 px-3 text-center">
+              <input type="checkbox" class="check-item-soal w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${s.id}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('soal', '${s.id}', this.checked)">
+            </td>
+            <td class="py-3.5 px-3 text-center font-bold text-slate-400">${idx + 1}</td>
+            <td class="py-3.5 px-4 align-top">
+              <div class="space-y-1">
+                <span class="inline-block px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-black text-[11px] border border-indigo-100">
+                  ${s.mapel || 'Matematika SD'}
+                </span>
+                <p class="text-[11px] font-bold text-slate-600">Kelas ${s.tingkat || 5} SD</p>
+                ${s.cpTp ? `<p class="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60 font-semibold line-clamp-1" title="${s.cpTp}">${s.cpTp}</p>` : ''}
+              </div>
+            </td>
+            <td class="py-3.5 px-4 align-top">
+              <div class="space-y-2">
+                ${s.wacana ? `
+                  <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-950 leading-relaxed font-medium">
+                    <strong class="font-black text-amber-900">📖 Cerita / Wacana:</strong>
+                    <p class="mt-0.5">${s.wacana}</p>
+                  </div>
+                ` : ''}
+
+                <p class="text-xs sm:text-sm text-slate-900 leading-snug font-bold">
+                  ${s.pertanyaan}
+                </p>
+
+                ${s.opsi && s.opsi.length > 0 ? `
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                    ${s.opsi.map(opt => {
+                      const isKey = Array.isArray(s.kunci) 
+                        ? s.kunci.includes(opt.key) 
+                        : String(s.kunci).trim().toUpperCase() === String(opt.key).trim().toUpperCase();
+                      return `
+                        <div class="px-2.5 py-1.5 rounded-xl border flex items-center gap-2 text-xs ${
+                          isKey 
+                            ? 'bg-emerald-50 border-emerald-300 font-black text-emerald-950 ring-1 ring-emerald-200' 
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }">
+                          <span class="w-5 h-5 rounded-lg ${isKey ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'} flex items-center justify-center font-black text-[10px] shrink-0">${opt.key}</span>
+                          <span class="leading-tight">${opt.text}</span>
+                          ${isKey ? '<span class="ml-auto text-[9px] font-black text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">✓ Kunci</span>' : ''}
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                ` : (s.tipe === 'short' ? `
+                  <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 text-[11px] font-bold">
+                    <i data-lucide="edit-3" class="w-3 h-3"></i>
+                    <span>Tipe Soal: Isian Singkat</span>
+                  </div>
+                ` : '')}
+              </div>
+            </td>
+            <td class="py-3.5 px-4 text-center align-top">
+              <span class="inline-flex items-center justify-center px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 font-mono font-black text-xs border border-emerald-200 shadow-2xs">
+                ${kunciStr}
+              </span>
+            </td>
+            <td class="py-3.5 px-4 text-center align-top">
+              <div class="flex items-center justify-center gap-1.5">
+                <button type="button" onclick="editSoal(${s.id})" class="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer" title="Edit Soal">
+                  <i data-lucide="edit" class="w-4 h-4"></i>
+                </button>
+                <button type="button" onclick="deleteSoal(${s.id})" class="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer" title="Hapus Soal">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      updateBulkToolbar('soal');
+      lucide.createIcons();
+    }
+
+    // Populate Dropdown Mapel di Form Soal & Import
+    function populateSoalMapelDropdown() {
+      const mapels = SicakapDB.getMapel();
+      const selSoal = document.getElementById('soal-mapel');
+      const selImport = document.getElementById('import-target-mapel');
+
+      const optionsHtml = mapels.map(m => `<option value="${m.nama}">${m.icon || '📚'} ${m.nama}</option>`).join('');
+      if (selSoal) {
+        selSoal.innerHTML = optionsHtml;
+        if (activeFilterMapel !== 'ALL' && mapels.some(m => m.nama === activeFilterMapel)) {
+          selSoal.value = activeFilterMapel;
+        }
+      }
+      if (selImport) {
+        selImport.innerHTML = optionsHtml;
+        if (activeFilterMapel !== 'ALL' && mapels.some(m => m.nama === activeFilterMapel)) {
+          selImport.value = activeFilterMapel;
+        }
+      }
+    }
+
+    // Modal Form Tambah / Edit Soal
+    function openModalTambahSoal() {
+      document.getElementById('soal-edit-id').value = '';
+      const titleEl = document.getElementById('modal-soal-title');
+      if (titleEl) {
+        titleEl.innerHTML = `<span>📝 Buat Butir Soal SD Baru</span><span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black">Standar SD</span>`;
+      }
+      populateSoalMapelDropdown();
+
+      document.getElementById('soal-cp').value = '';
+      document.getElementById('soal-wacana').value = '';
+      document.getElementById('soal-pertanyaan').value = '';
+      document.getElementById('soal-opsi-a').value = '';
+      document.getElementById('soal-opsi-b').value = '';
+      document.getElementById('soal-opsi-c').value = '';
+      document.getElementById('soal-opsi-d').value = '';
+      document.getElementById('soal-kunci').value = 'A';
+      document.getElementById('soal-kunci-text').value = '';
+      document.getElementById('soal-tipe').value = 'single';
+      onSoalTypeChange();
+
+      openModal('modal-add-soal');
+    }
+
+    function editSoal(id) {
+      const allSoal = SicakapDB.getSoal();
+      const s = allSoal.find(item => item.id === id || String(item.id) === String(id));
+      if (!s) return;
+
+      document.getElementById('soal-edit-id').value = s.id;
+      const titleEl = document.getElementById('modal-soal-title');
+      if (titleEl) {
+        titleEl.innerHTML = `<span>✏️ Edit Soal SD #${s.id}</span><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">${s.mapel}</span>`;
+      }
+      populateSoalMapelDropdown();
+
+      document.getElementById('soal-mapel').value = s.mapel || 'Matematika SD';
+      document.getElementById('soal-tingkat').value = s.tingkat || '5';
+      document.getElementById('soal-tipe').value = s.tipe || 'single';
+      document.getElementById('soal-cp').value = s.cpTp || '';
+      document.getElementById('soal-wacana').value = s.wacana || '';
+      document.getElementById('soal-pertanyaan').value = s.pertanyaan || '';
+      document.getElementById('soal-level').value = s.levelKognitif || 'L2 (Aplikasi)';
+
+      const optA = (s.opsi || []).find(o => o.key === 'A')?.text || '';
+      const optB = (s.opsi || []).find(o => o.key === 'B')?.text || '';
+      const optC = (s.opsi || []).find(o => o.key === 'C')?.text || '';
+      const optD = (s.opsi || []).find(o => o.key === 'D')?.text || '';
+      document.getElementById('soal-opsi-a').value = optA;
+      document.getElementById('soal-opsi-b').value = optB;
+      document.getElementById('soal-opsi-c').value = optC;
+      document.getElementById('soal-opsi-d').value = optD;
+
+      if (s.tipe === 'short' || s.tipe === 'match') {
+        document.getElementById('soal-kunci-text').value = s.kunci || '';
+      } else {
+        document.getElementById('soal-kunci').value = (s.kunci || 'A').toUpperCase();
+      }
+
+      onSoalTypeChange();
+      openModal('modal-add-soal');
+    }
+
+    function onSoalTypeChange() {
+      const tipe = document.getElementById('soal-tipe').value;
+      const containerOpsi = document.getElementById('container-opsi-abcd');
+      const selKunci = document.getElementById('soal-kunci');
+      const textKunci = document.getElementById('soal-kunci-text');
+
+      if (tipe === 'single' || tipe === 'multiple') {
+        if (containerOpsi) containerOpsi.classList.remove('hidden');
+        if (selKunci) selKunci.classList.remove('hidden');
+        if (textKunci) textKunci.classList.add('hidden');
+      } else {
+        if (containerOpsi) containerOpsi.classList.add('hidden');
+        if (selKunci) selKunci.classList.add('hidden');
+        if (textKunci) textKunci.classList.remove('hidden');
+      }
+    }
+
+    function handleSaveSoal(e) {
+      e.preventDefault();
+      const editId = document.getElementById('soal-edit-id').value;
+      const mapel = document.getElementById('soal-mapel').value;
+      const tingkat = document.getElementById('soal-tingkat').value;
+      const tipe = document.getElementById('soal-tipe').value;
+      const cpTp = document.getElementById('soal-cp').value.trim();
+      const wacana = document.getElementById('soal-wacana').value.trim();
+      const pertanyaan = document.getElementById('soal-pertanyaan').value.trim();
+      const levelKognitif = document.getElementById('soal-level').value;
+
+      let kunci = 'A';
+      let opsi = [];
+
+      if (tipe === 'single' || tipe === 'multiple') {
+        kunci = document.getElementById('soal-kunci').value;
+        opsi = [
+          { key: 'A', text: document.getElementById('soal-opsi-a').value.trim() },
+          { key: 'B', text: document.getElementById('soal-opsi-b').value.trim() },
+          { key: 'C', text: document.getElementById('soal-opsi-c').value.trim() },
+          { key: 'D', text: document.getElementById('soal-opsi-d').value.trim() }
+        ];
+      } else {
+        kunci = document.getElementById('soal-kunci-text').value.trim();
+      }
+
+      const payload = {
+        mapel,
+        tingkat,
+        tipe,
+        wacana,
+        pertanyaan,
+        opsi,
+        kunci,
+        cpTp,
+        levelKognitif
+      };
+
+      if (editId) {
+        SicakapDB.updateSoal(editId, payload);
+        showToast('Soal SD berhasil diperbarui di Bank Soal & LocalStorage!');
+      } else {
+        SicakapDB.addSoal(payload);
+        showToast('Soal SD baru berhasil disimpan ke Bank Soal & LocalStorage!');
+      }
+
+      closeModal('modal-add-soal');
+      renderMapelFilterTabs();
+      renderBankSoal();
+      renderStats();
+    }
+
+    function deleteSoal(id) {
+      if (confirm('Yakin ingin menghapus butir soal ini dari Bank Soal SD?')) {
+        SicakapDB.deleteSoal(id);
+        renderMapelFilterTabs();
+        renderBankSoal();
+        renderStats();
+        showToast('Soal berhasil dihapus dari Bank Soal!');
+      }
+    }
+
+    // ==============================================================
+    // KELOLA MATA PELAJARAN SD (sicakap_mapel)
+    // ==============================================================
+    function openModalKelolaMapel() {
+      openModal('modal-kelola-mapel');
+      renderMapelManagerList();
+    }
+
+    function renderMapelManagerList() {
+      const container = document.getElementById('mapel-manager-list');
+      if (!container) return;
+
+      const mapels = SicakapDB.getMapel();
+      const allSoal = SicakapDB.getSoal();
+      const countMap = {};
+      allSoal.forEach(s => {
+        countMap[s.mapel] = (countMap[s.mapel] || 0) + 1;
+      });
+
+      if (mapels.length === 0) {
+        container.innerHTML = `<p class="text-slate-400 py-3 text-center">Belum ada mata pelajaran.</p>`;
+        return;
+      }
+
+      container.innerHTML = mapels.map(m => {
+        const cnt = countMap[m.nama] || 0;
+        return `
+          <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xl p-1.5 rounded-xl bg-white shadow-2xs">${m.icon || '📚'}</span>
+              <div>
+                <p class="font-black text-slate-800 text-xs">${m.nama}</p>
+                <p class="text-[10px] text-slate-500">${m.deskripsi || 'Mata Pelajaran Kurikulum Merdeka SD'}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-black text-[10px]">${cnt} Soal</span>
+              <button type="button" onclick="deleteMapelItem('${m.id}', '${m.nama}')" class="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer" title="Hapus Mapel">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function handleAddNewMapel(e) {
+      e.preventDefault();
+      const nama = document.getElementById('new-mapel-nama').value.trim();
+      const icon = document.getElementById('new-mapel-icon').value.trim() || '📚';
+      const deskripsi = document.getElementById('new-mapel-desc').value.trim();
+
+      if (!nama) return;
+      SicakapDB.addMapel({ nama, icon, deskripsi });
+
+      document.getElementById('new-mapel-nama').value = '';
+      document.getElementById('new-mapel-desc').value = '';
+
+      renderMapelManagerList();
+      renderMapelFilterTabs();
+      populateSoalMapelDropdown();
+      showToast(`Mata Pelajaran "${nama}" berhasil ditambahkan!`);
+    }
+
+    function deleteMapelItem(id, nama) {
+      if (confirm(`Yakin ingin menghapus mata pelajaran "${nama}" dari daftar mapel SD?`)) {
+        SicakapDB.deleteMapel(id);
+        if (activeFilterMapel === nama) activeFilterMapel = 'ALL';
+        renderMapelManagerList();
+        renderMapelFilterTabs();
+        renderBankSoal();
+        populateSoalMapelDropdown();
+        showToast(`Mata Pelajaran "${nama}" berhasil dihapus.`);
+      }
+    }
+
+    // ==============================================================
+    // BULK IMPORT WORD & GOOGLE FORM
+    // ==============================================================
+    function openModalImportSoal() {
+      populateSoalMapelDropdown();
+      document.getElementById('import-word-text').value = '';
+      document.getElementById('import-csv-text').value = '';
+      document.getElementById('word-preview-container').innerHTML = `<p class="text-slate-400 text-center py-4 font-bold">Ketik atau tempel teks soal di atas untuk melihat preview otomatis.</p>`;
+      document.getElementById('csv-preview-container').innerHTML = `<p class="text-slate-400 text-center py-4 font-bold">Ketik atau tempel baris spreadsheet di atas untuk melihat preview otomatis.</p>`;
+      document.getElementById('word-detected-badge').textContent = '0 Soal Terdeteksi';
+      document.getElementById('csv-detected-badge').textContent = '0 Soal Terdeteksi';
+      document.getElementById('btn-commit-word-import').disabled = true;
+      document.getElementById('btn-commit-csv-import').disabled = true;
+      currentParsedWordSoal = [];
+      currentParsedCsvSoal = [];
+
+      switchImportTab('word');
+      openModal('modal-import-soal');
+    }
+
+    function switchImportTab(tab) {
+      const tabWord = document.getElementById('import-tab-word');
+      const tabCsv = document.getElementById('import-tab-csv');
+      const btnWord = document.getElementById('import-tab-btn-word');
+      const btnCsv = document.getElementById('import-tab-btn-csv');
+
+      if (tab === 'word') {
+        tabWord.classList.remove('hidden');
+        tabCsv.classList.add('hidden');
+        btnWord.className = 'pb-2.5 px-3 border-b-2 border-teal-600 text-teal-800 font-black cursor-pointer';
+        btnCsv.className = 'pb-2.5 px-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 cursor-pointer';
+      } else {
+        tabWord.classList.add('hidden');
+        tabCsv.classList.remove('hidden');
+        btnWord.className = 'pb-2.5 px-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 cursor-pointer';
+        btnCsv.className = 'pb-2.5 px-3 border-b-2 border-emerald-600 text-emerald-800 font-black cursor-pointer';
+      }
+    }
+
+    // Smart Parser Word (.docx & Copy-Paste)
+    function handleWordFileUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      if (file.name.endsWith('.docx')) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const arrayBuffer = e.target.result;
+          if (window.mammoth) {
+            window.mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+              .then(function(result) {
+                document.getElementById('import-word-text').value = result.value;
+                parseWordImportText();
+                showToast(`File Word "${file.name}" berhasil diekstraksi!`);
+              })
+              .catch(function(err) {
+                alert('Gagal membaca file .docx: ' + err.message);
+              });
+          } else {
+            alert('Library Mammoth.js belum siap. Silakan refresh halaman.');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('import-word-text').value = e.target.result;
+          parseWordImportText();
+        };
+        reader.readAsText(file);
+      }
+    }
+
+    function parseWordImportText() {
+      const raw = document.getElementById('import-word-text').value;
+      const container = document.getElementById('word-preview-container');
+      const badge = document.getElementById('word-detected-badge');
+      const commitBtn = document.getElementById('btn-commit-word-import');
+
+      if (!raw || !raw.trim()) {
+        container.innerHTML = `<p class="text-slate-400 text-center py-4 font-bold">Ketik atau tempel teks soal di atas untuk melihat preview otomatis.</p>`;
+        badge.textContent = '0 Soal Terdeteksi';
+        commitBtn.disabled = true;
+        currentParsedWordSoal = [];
+        return;
+      }
+
+      // Smart Regex Splitter berdasarkan nomor soal "1.", "1)", "Soal 1:"
+      const blocks = raw.split(/(?:^|\r?\n)\s*(?:[0-9]+[\.\)]|\bSoal\s+[0-9]+[\.\:]?)\s*/i);
+      const items = [];
+
+      blocks.forEach((block) => {
+        if (!block || !block.trim()) return;
+
+        // Cari Opsi A, B, C, D
+        const optMatchA = block.match(/(?:^|\r?\n)\s*[Aa][\.\)]\s*(.+?)(?=(?:\r?\n\s*[Bb][\.\)]|\r?\n\s*Kunci|\r?\n\s*Jawaban|$))/s);
+        const optMatchB = block.match(/(?:^|\r?\n)\s*[Bb][\.\)]\s*(.+?)(?=(?:\r?\n\s*[Cc][\.\)]|\r?\n\s*Kunci|\r?\n\s*Jawaban|$))/s);
+        const optMatchC = block.match(/(?:^|\r?\n)\s*[Cc][\.\)]\s*(.+?)(?=(?:\r?\n\s*[Dd][\.\)]|\r?\n\s*Kunci|\r?\n\s*Jawaban|$))/s);
+        const optMatchD = block.match(/(?:^|\r?\n)\s*[Dd][\.\)]\s*(.+?)(?=(?:\r?\n\s*Kunci|\r?\n\s*Jawaban|$))/s);
+
+        // Pertanyaan adalah teks sebelum Opsi A
+        let qText = block;
+        const firstOptIdx = block.search(/(?:^|\r?\n)\s*[Aa][\.\)]/);
+        if (firstOptIdx !== -1) {
+          qText = block.substring(0, firstOptIdx).trim();
+        }
+
+        // Kunci Jawaban
+        const keyMatch = block.match(/(?:Kunci|Jawaban|Kunci Jawaban|Ans|Answer)\s*[\:\=\-]?\s*([A-Da-d])/i);
+        const key = keyMatch ? keyMatch[1].toUpperCase() : 'A';
+
+        if (qText && optMatchA && optMatchB) {
+          items.push({
+            pertanyaan: qText.replace(/\r?\n/g, ' ').trim(),
+            opsi: [
+              { key: 'A', text: optMatchA[1].replace(/\r?\n/g, ' ').trim() },
+              { key: 'B', text: optMatchB[1].replace(/\r?\n/g, ' ').trim() },
+              { key: 'C', text: optMatchC ? optMatchC[1].replace(/\r?\n/g, ' ').trim() : '' },
+              { key: 'D', text: optMatchD ? optMatchD[1].replace(/\r?\n/g, ' ').trim() : '' }
+            ].filter(o => o.text !== ''),
+            kunci: key,
+            tipe: 'single'
+          });
+        }
+      });
+
+      currentParsedWordSoal = items;
+      badge.textContent = `${items.length} Soal Terdeteksi`;
+      commitBtn.disabled = items.length === 0;
+
+      if (items.length === 0) {
+        container.innerHTML = `<p class="text-amber-600 text-center py-4 font-bold">Format belum dikenali. Pastikan ada nomor soal (1.), opsi (A., B., C., D.), dan Kunci: C.</p>`;
+        return;
+      }
+
+      container.innerHTML = items.map((it, idx) => `
+        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-black text-teal-800 bg-teal-100 px-2 py-0.5 rounded-md text-[10px]">SOAL #${idx + 1}</span>
+            <span class="font-mono font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md text-[10px]">Kunci: ${it.kunci}</span>
+          </div>
+          <p class="font-bold text-slate-800">${it.pertanyaan}</p>
+          <div class="grid grid-cols-2 gap-1 text-[11px] font-medium text-slate-600">
+            ${it.opsi.map(o => `<div><strong>${o.key}.</strong> ${o.text}</div>`).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function handleCommitWordImport() {
+      if (currentParsedWordSoal.length === 0) return;
+      const targetMapel = document.getElementById('import-target-mapel').value;
+      const targetKelas = document.getElementById('import-target-kelas').value;
+
+      const listToSave = currentParsedWordSoal.map(item => ({
+        mapel: targetMapel,
+        tingkat: targetKelas,
+        tipe: 'single',
+        wacana: '',
+        pertanyaan: item.pertanyaan,
+        opsi: item.opsi,
+        kunci: item.kunci,
+        cpTp: `Materi ${targetMapel} SD Kelas ${targetKelas}`,
+        levelKognitif: 'L2 (Aplikasi)'
+      }));
+
+      SicakapDB.bulkAddSoal(listToSave);
+      closeModal('modal-import-soal');
+      renderMapelFilterTabs();
+      renderBankSoal();
+      renderStats();
+      showToast(`⚡ ${listToSave.length} Butir Soal dari Word berhasil dimasukkan ke ${targetMapel}!`);
+    }
+
+    // Smart Parser Google Form / CSV / Spreadsheet
+    function handleCsvFileUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        document.getElementById('import-csv-text').value = e.target.result;
+        parseCsvImportText();
+      };
+      reader.readAsText(file);
+    }
+
+    function parseCsvImportText() {
+      const raw = document.getElementById('import-csv-text').value;
+      const container = document.getElementById('csv-preview-container');
+      const badge = document.getElementById('csv-detected-badge');
+      const commitBtn = document.getElementById('btn-commit-csv-import');
+
+      if (!raw || !raw.trim()) {
+        container.innerHTML = `<p class="text-slate-400 text-center py-4 font-bold">Ketik atau tempel baris spreadsheet di atas untuk melihat preview otomatis.</p>`;
+        badge.textContent = '0 Soal Terdeteksi';
+        commitBtn.disabled = true;
+        currentParsedCsvSoal = [];
+        return;
+      }
+
+      const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      const items = [];
+
+      lines.forEach((line) => {
+        let cols = [];
+        if (line.includes('\t')) cols = line.split('\t');
+        else if (line.includes(';')) cols = line.split(';');
+        else cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+
+        cols = cols.map(c => c.replace(/^["']|["']$/g, '').trim());
+
+        if (cols[0] && (cols[0].toLowerCase().includes('pertanyaan') || cols[0].toLowerCase().includes('soal'))) {
+          return;
+        }
+
+        if (cols.length >= 6) {
+          const pertanyaan = cols[0];
+          const opsiA = cols[1];
+          const opsiB = cols[2];
+          const opsiC = cols[3];
+          const opsiD = cols[4];
+          const kunci = (cols[5] || 'A').toUpperCase().replace(/[^A-D]/g, '') || 'A';
+
+          if (pertanyaan && opsiA && opsiB) {
+            items.push({
+              pertanyaan: pertanyaan,
+              opsi: [
+                { key: 'A', text: opsiA },
+                { key: 'B', text: opsiB },
+                { key: 'C', text: opsiC || '' },
+                { key: 'D', text: opsiD || '' }
+              ].filter(o => o.text !== ''),
+              kunci: kunci,
+              tipe: 'single'
+            });
+          }
+        }
+      });
+
+      currentParsedCsvSoal = items;
+      badge.textContent = `${items.length} Soal Terdeteksi`;
+      commitBtn.disabled = items.length === 0;
+
+      if (items.length === 0) {
+        container.innerHTML = `<p class="text-amber-600 text-center py-4 font-bold">Format tidak terdeteksi. Pastikan urutan 6 kolom: Pertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Kunci.</p>`;
+        return;
+      }
+
+      container.innerHTML = items.map((it, idx) => `
+        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md text-[10px]">BARIS #${idx + 1}</span>
+            <span class="font-mono font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md text-[10px]">Kunci: ${it.kunci}</span>
+          </div>
+          <p class="font-bold text-slate-800">${it.pertanyaan}</p>
+          <div class="grid grid-cols-2 gap-1 text-[11px] font-medium text-slate-600">
+            ${it.opsi.map(o => `<div><strong>${o.key}.</strong> ${o.text}</div>`).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function downloadSoalCsvTemplate() {
+      const csvContent = 
+`Pertanyaan,Opsi A,Opsi B,Opsi C,Opsi D,Kunci Jawaban
+"Ibu membeli 3 kantong apel. Tiap kantong berisi 5 apel. Berapa jumlah seluruh apel Ibu?","8 apel","12 apel","15 apel","20 apel","C"
+"Hasil dari 125 + 75 adalah...","190","200","210","225","B"
+"Hewan pemakan tumbuhan dalam suatu rantai makanan disebut sebagai...","Konsumen primer","Konsumen sekunder","Pengurai","Produsen","A"
+"Sikap terpuji yang mencerminkan sila ketiga Pancasila adalah...","Menghargai pendapat teman","Gotong royong membersihkan kelas","Rajin beribadah","Berbagi makanan dengan adil","B"`;
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'template-import-bank-soal-sd.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('Template Bank Soal SD (.csv) berhasil diunduh!');
+    }
+
+    function handleCommitCsvImport() {
+      if (currentParsedCsvSoal.length === 0) return;
+      const targetMapel = document.getElementById('import-target-mapel').value;
+      const targetKelas = document.getElementById('import-target-kelas').value;
+
+      const listToSave = currentParsedCsvSoal.map(item => ({
+        mapel: targetMapel,
+        tingkat: targetKelas,
+        tipe: 'single',
+        wacana: '',
+        pertanyaan: item.pertanyaan,
+        opsi: item.opsi,
+        kunci: item.kunci,
+        cpTp: `Materi ${targetMapel} SD Kelas ${targetKelas}`,
+        levelKognitif: 'L2 (Aplikasi)'
+      }));
+
+      SicakapDB.bulkAddSoal(listToSave);
+      closeModal('modal-import-soal');
+      renderMapelFilterTabs();
+      renderBankSoal();
+      renderStats();
+      showToast(`⚡ ${listToSave.length} Butir Soal dari Spreadsheet berhasil dimasukkan ke ${targetMapel}!`);
+    }
+
+    // Export & Print Actions for Admin
+    function printAdminKartuUjian() {
+      const rombelId = document.getElementById('admin-filter-rombel') ? document.getElementById('admin-filter-rombel').value : 'ALL';
+      if (window.SicakapExport) {
+        SicakapExport.printKartuUjian({ rombelId: rombelId });
+      } else {
+        alert('Modul ekspor cetak belum terpasang!');
+      }
+    }
+
+    function printAdminBeritaAcara() {
+      const rombelId = document.getElementById('admin-filter-rombel') ? document.getElementById('admin-filter-rombel').value : 'ALL';
+      const rId = (rombelId && rombelId !== 'ALL') ? rombelId : 'RMB-5A';
+      if (window.SicakapExport) {
+        SicakapExport.printBeritaAcaraDaftarHadir({ rombelId: rId, mapelName: 'Asesmen CBT SD' });
+      } else {
+        alert('Modul ekspor cetak belum terpasang!');
+      }
+    }
+
+    function exportAdminLiveScoreExcel() {
+      const mapel = document.getElementById('admin-livescore-mapel') ? document.getElementById('admin-livescore-mapel').value : 'ALL';
+      const rombelId = document.getElementById('admin-livescore-rombel') ? document.getElementById('admin-livescore-rombel').value : 'ALL';
+      if (window.SicakapExport) {
+        SicakapExport.exportExcelLiveScores({ mapel: mapel, rombelId: rombelId });
+      } else {
+        alert('Modul ekspor Excel belum terpasang!');
+      }
+    }
+
+    // ================= FITUR 1: MANAJEMEN PROFIL SEKOLAH =================
+    function renderProfilSekolah() {
+      const p = SicakapDB.getProfilSekolah();
+      if (!p) return;
+
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || '';
+      };
+      const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || '';
+      };
+
+      setVal('profil-nama-sekolah', p.namaSekolah);
+      setVal('profil-npsn', p.npsn);
+      setVal('profil-nss', p.nss);
+      setVal('profil-alamat', p.alamat);
+      setVal('profil-kepsek-nama', p.kepsek);
+      setVal('profil-kepsek-nip', p.nipKepsek);
+      setVal('profil-tahun-pelajaran', p.tahunPelajaran);
+      setVal('profil-semester', p.semester || 'Ganjil');
+      setVal('profil-logo-url', p.logo || '');
+
+      // Header update: "Admin [Nama Sekolah]"
+      setText('admin-header-name', `Admin ${p.namaSekolah || 'SDN 1 Nusantara'}`);
+
+      // Sidebar footer: "Tahun Pelajaran"
+      const sbTapel = document.getElementById('sidebar-tahun-pelajaran');
+      if (sbTapel) {
+        sbTapel.textContent = `TP ${p.tahunPelajaran || '2026/2027 SD'} • ${p.semester || 'Ganjil'}`;
+      }
+
+      // Live Kop Preview
+      setText('preview-kop-nama', (p.namaSekolah || 'SDN 1 Nusantara').toUpperCase());
+      setText('preview-kop-npsn', `NPSN: ${p.npsn || '20104567'} • NSS: ${p.nss || '101056001001'}`);
+      setText('preview-kop-alamat', p.alamat || 'Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan');
+      setText('preview-kop-kepsek', p.kepsek || 'Drs. H. Mulyadi, M.Pd.');
+      setText('preview-kop-nip', p.nipKepsek || '196803121992031004');
+      setText('preview-kop-tapel', `${p.tahunPelajaran || '2026/2027 SD'} (${p.semester || 'Ganjil'})`);
+
+      // Logo Preview
+      updateLogoPreviewFromInput();
+    }
+
+    function updateLogoPreviewFromInput() {
+      const urlInput = document.getElementById('profil-logo-url');
+      const imgEl = document.getElementById('profil-preview-logo-img');
+      const fallbackEl = document.getElementById('profil-preview-logo-fallback');
+      const src = urlInput ? urlInput.value.trim() : '';
+
+      if (imgEl && fallbackEl) {
+        if (src) {
+          imgEl.src = src;
+          imgEl.onload = () => {
+            imgEl.classList.remove('hidden');
+            fallbackEl.classList.add('hidden');
+          };
+          imgEl.onerror = () => {
+            imgEl.classList.add('hidden');
+            fallbackEl.classList.remove('hidden');
+          };
+        } else {
+          imgEl.src = '';
+          imgEl.classList.add('hidden');
+          fallbackEl.classList.remove('hidden');
+        }
+      }
+    }
+
+    function handleLogoFileUpload(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Ukuran file logo terlalu besar! Maksimal 2MB.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const base64 = e.target.result;
+        const urlInput = document.getElementById('profil-logo-url');
+        if (urlInput) urlInput.value = base64;
+        updateLogoPreviewFromInput();
+        showToast('Logo sekolah berhasil dimuat!');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleSaveProfilSekolah(e) {
+      if (e) e.preventDefault();
+      const namaSekolah = document.getElementById('profil-nama-sekolah')?.value.trim() || 'SDN 1 Nusantara';
+      const npsn = document.getElementById('profil-npsn')?.value.trim() || '';
+      const nss = document.getElementById('profil-nss')?.value.trim() || '';
+      const alamat = document.getElementById('profil-alamat')?.value.trim() || '';
+      const kepsek = document.getElementById('profil-kepsek-nama')?.value.trim() || '';
+      const nipKepsek = document.getElementById('profil-kepsek-nip')?.value.trim() || '';
+      const tahunPelajaran = document.getElementById('profil-tahun-pelajaran')?.value.trim() || '2026/2027 SD';
+      const semester = document.getElementById('profil-semester')?.value || 'Ganjil';
+      const logo = document.getElementById('profil-logo-url')?.value.trim() || '';
+
+      const payload = {
+        namaSekolah,
+        npsn,
+        nss,
+        alamat,
+        kepsek,
+        nipKepsek,
+        tahunPelajaran,
+        semester,
+        logo
+      };
+
+      SicakapDB.saveProfilSekolah(payload);
+      renderProfilSekolah();
+      showToast('🏛️ Profil Sekolah berhasil disimpan!');
+    }
+
+    function resetProfilSekolahDefault() {
+      if (!confirm('Kembalikan profil sekolah ke setelan default SDN 1 Nusantara?')) return;
+      const def = {
+        namaSekolah: 'SDN 1 Nusantara',
+        npsn: '20104567',
+        nss: '101056001001',
+        alamat: 'Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan',
+        kepsek: 'Drs. H. Mulyadi, M.Pd.',
+        nipKepsek: '196803121992031004',
+        tahunPelajaran: '2026/2027 SD',
+        semester: 'Ganjil',
+        logo: ''
+      };
+      SicakapDB.saveProfilSekolah(def);
+      renderProfilSekolah();
+      showToast('Profil sekolah direset ke default!');
+    }
+
+    // ================= FITUR 2: PENGATURAN AKUN ADMINISTRATOR =================
+    function renderAkunAdmin() {
+      const akun = SicakapDB.getAkunAdmin();
+      if (!akun) return;
+
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || '';
+      };
+      const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || '';
+      };
+
+      setVal('akun-admin-nama', akun.nama);
+      setVal('akun-admin-email', akun.email);
+      setVal('akun-admin-username', akun.username);
+      setVal('akun-admin-password', '');
+      setVal('akun-admin-password-confirm', '');
+
+      // Update Header Email & Avatar Initials
+      setText('admin-header-email', akun.email);
+      setText('dropdown-admin-email', akun.email);
+      setText('akun-admin-nama-display', akun.nama);
+      setText('akun-admin-email-display', akun.email);
+
+      // Compute initials
+      let initials = 'ADM';
+      if (akun.nama) {
+        const parts = akun.nama.replace(/[^a-zA-Z\s]/g, '').trim().split(/\s+/);
+        if (parts.length >= 2) {
+          initials = (parts[0][0] + parts[1][0]).toUpperCase();
+        } else if (parts[0]) {
+          initials = parts[0].substring(0, 3).toUpperCase();
+        }
+      }
+
+      setText('admin-avatar-initials', initials);
+      setText('akun-admin-avatar-big', initials);
+    }
+
+    function handleSaveAkunAdmin(e) {
+      if (e) e.preventDefault();
+      const nama = document.getElementById('akun-admin-nama')?.value.trim();
+      const email = document.getElementById('akun-admin-email')?.value.trim();
+      const username = document.getElementById('akun-admin-username')?.value.trim();
+      const pwd = document.getElementById('akun-admin-password')?.value;
+      const pwdConfirm = document.getElementById('akun-admin-password-confirm')?.value;
+
+      if (!nama || !email || !username) {
+        alert('Nama, email, dan username tidak boleh kosong!');
+        return;
+      }
+
+      if (pwd) {
+        if (pwd.length < 4) {
+          alert('Kata sandi minimal 4 karakter!');
+          return;
+        }
+        if (pwd !== pwdConfirm) {
+          alert('Konfirmasi kata sandi tidak cocok!');
+          return;
+        }
+      }
+
+      const payload = {
+        nama,
+        email,
+        username
+      };
+      if (pwd) {
+        payload.password = pwd;
+      }
+
+      SicakapDB.saveAkunAdmin(payload);
+      renderAkunAdmin();
+      showToast('⚙️ Pengaturan Akun Admin berhasil disimpan!');
+    }
+
+    // Profile Header Dropdown Menu Toggle
+    function toggleAdminProfileMenu() {
+      const dd = document.getElementById('admin-profile-dropdown');
+      const btn = document.getElementById('btn-admin-profile-toggle');
+      if (dd) {
+        const isClosed = dd.classList.contains('hidden');
+        if (isClosed) {
+          dd.classList.remove('hidden');
+          if (btn) btn.setAttribute('aria-expanded', 'true');
+        } else {
+          dd.classList.add('hidden');
+          if (btn) btn.setAttribute('aria-expanded', 'false');
+        }
+      }
+    }
+
+    function closeAdminProfileMenu() {
+      const dd = document.getElementById('admin-profile-dropdown');
+      const btn = document.getElementById('btn-admin-profile-toggle');
+      if (dd) dd.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
+    // Close profile dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      const container = document.getElementById('admin-header-profile-container');
+      if (container && !container.contains(e.target)) {
+        closeAdminProfileMenu();
+      }
+    });
+
+    // Action Listeners Setup (Dual Event Layer: addEventListener + inline onclick)
+    function setupActionListeners() {
+      // 1. Header Live Score
+      const btnHeaderLive = document.getElementById('btn-header-livescore');
+      if (btnHeaderLive) {
+        btnHeaderLive.addEventListener('click', (e) => {
+          e.preventDefault();
+          switchTab('command');
+        });
+      }
+
+      // 2. Action Buttons
+      const btnSyncData = document.getElementById('btn-sync-data');
+      if (btnSyncData) {
+        btnSyncData.addEventListener('click', (e) => {
+          e.preventDefault();
+          initAdminData(true);
+        });
+      }
+
+      const btnAddGuruQuick = document.getElementById('btn-quick-add-guru');
+      if (btnAddGuruQuick) {
+        btnAddGuruQuick.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModalAddGuru();
+        });
+      }
+
+      const btnAddGuruMain = document.getElementById('btn-add-guru-main');
+      if (btnAddGuruMain) {
+        btnAddGuruMain.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModalAddGuru();
+        });
+      }
+
+      const btnAddRombelQuick = document.getElementById('btn-quick-add-rombel');
+      if (btnAddRombelQuick) {
+        btnAddRombelQuick.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModalAddRombel();
+        });
+      }
+
+      const btnAddRombelMain = document.getElementById('btn-add-rombel-main');
+      if (btnAddRombelMain) {
+        btnAddRombelMain.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModalAddRombel();
+        });
+      }
+
+      const btnAddJadwalQuick = document.getElementById('btn-quick-add-jadwal');
+      if (btnAddJadwalQuick) {
+        btnAddJadwalQuick.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModalAddJadwal();
+        });
+      }
+
+      const btnAddJadwalMain = document.getElementById('btn-add-jadwal-main');
+      if (btnAddJadwalMain) {
+        btnAddJadwalMain.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModalAddJadwal();
+        });
+      }
+
+      // 3. Navigation Sidebar Menus
+      const navMenus = [
+        { id: 'nav-btn-overview', tab: 'overview' },
+        { id: 'nav-btn-guru', tab: 'guru' },
+        { id: 'nav-btn-rombel', tab: 'rombel' },
+        { id: 'nav-btn-siswa', tab: 'siswa' },
+        { id: 'nav-btn-jadwal', tab: 'jadwal' },
+        { id: 'nav-btn-soal', tab: 'soal' },
+        { id: 'nav-btn-command', tab: 'command' },
+        { id: 'nav-btn-profil', tab: 'profil' },
+        { id: 'nav-btn-akun', tab: 'akun' }
+      ];
+
+      navMenus.forEach(item => {
+        const el = document.getElementById(item.id);
+        if (el) {
+          el.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchTab(item.tab);
+          });
+        }
+      });
+
+      // 4. Overview Stat Cards
+      const statCards = [
+        { id: 'card-stat-guru', tab: 'guru' },
+        { id: 'card-stat-rombel', tab: 'rombel' },
+        { id: 'card-stat-siswa', tab: 'siswa' },
+        { id: 'card-stat-jadwal', tab: 'jadwal' },
+        { id: 'card-stat-soal', tab: 'soal' }
+      ];
+
+      statCards.forEach(item => {
+        const el = document.getElementById(item.id);
+        if (el) {
+          el.addEventListener('click', () => {
+            switchTab(item.tab);
+          });
+        }
+      });
+    }
+
+    // Expose all handlers to global window
+    window.switchTab = switchTab;
+    window.openModal = openModal;
+    window.closeModal = closeModal;
+    window.openModalAddGuru = openModalAddGuru;
+    window.openModalAddRombel = openModalAddRombel;
+    window.openModalAddJadwal = openModalAddJadwal;
+    window.initAdminData = initAdminData;
+    window.renderStats = renderStats;
+    window.handleSaveGuru = handleSaveGuru;
+    window.handleSaveRombel = handleSaveRombel;
+    window.handleSaveJadwal = handleSaveJadwal;
+    window.toggleMobileSidebar = toggleMobileSidebar;
+    window.setupActionListeners = setupActionListeners;
+    window.renderProfilSekolah = renderProfilSekolah;
+    window.updateLogoPreviewFromInput = updateLogoPreviewFromInput;
+    window.handleLogoFileUpload = handleLogoFileUpload;
+    window.handleSaveProfilSekolah = handleSaveProfilSekolah;
+    window.resetProfilSekolahDefault = resetProfilSekolahDefault;
+    window.renderAkunAdmin = renderAkunAdmin;
+    window.handleSaveAkunAdmin = handleSaveAkunAdmin;
+    window.toggleAdminProfileMenu = toggleAdminProfileMenu;
+    window.closeAdminProfileMenu = closeAdminProfileMenu;
+    window.toggleSelectAll = toggleSelectAll;
+    window.onItemCheckChange = onItemCheckChange;
+    window.deselectAll = deselectAll;
+    window.updateBulkToolbar = updateBulkToolbar;
+    window.confirmBulkDelete = confirmBulkDelete;
+    window.confirmClearAll = confirmClearAll;
+
+    // Run on load
+    window.addEventListener('DOMContentLoaded', () => {
+      initAdminData();
+      setupActionListeners();
+      if (window.SicakapDB) {
+        SicakapDB.renderPersistenceBar(document.getElementById('admin-persistence-bar'));
+      }
+      lucide.createIcons();
+    });
+
+    // Auto-sync across tabs when modified anywhere
+    window.addEventListener('storage', () => {
+      initAdminData();
+    });
+    window.addEventListener('sicakap_sync', () => {
+      initAdminData();
+    });
+    window.addEventListener('sicakap_guru_updated', () => {
+      initAdminData();
+    });
+    window.addEventListener('sicakap_profil_updated', () => {
+      initAdminData();
+    });
+    window.addEventListener('sicakap_admin_updated', () => {
+      initAdminData();
+    });
+  </script>
+</body>
+</html>
