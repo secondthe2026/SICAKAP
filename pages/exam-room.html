@@ -28,7 +28,7 @@
     import { renderQuestion } from '/src/engines/question-renderer.js';
     import { initExamAccessibility, renderQuestionNav, hasFilledAnswer } from '/src/engines/accessibility.js';
 
-    requireRole(['siswa', 'proktor', 'guru', 'admin_sekolah', 'superadmin']);
+    requireRole(['siswa']);
 
     // State Lokal UI
     let engine = null;
@@ -319,17 +319,19 @@
 
       lucide.createIcons();
 
-      // Pre-fill student info
-      const studentName = sessionStorage.getItem('sicakap_name') || 'Ahmad Rizky Pratama';
-      const studentNisn = sessionStorage.getItem('sicakap_nisn') || '0084928192';
-      const examTitle = sessionStorage.getItem('sicakap_mapel') || 'Literasi & Numerasi SD (Fase C)';
+      // Pre-fill student info from Supabase profile or session
+      const authProfile = window.__SICAKAP_USER__?.profile;
+      const studentName = authProfile?.full_name || sessionStorage.getItem('sicakap_name') || 'Siswa SD';
+      const studentNisn = authProfile?.nisn || sessionStorage.getItem('sicakap_nisn') || '0084928192';
+      const studentKelas = authProfile?.kelas || authProfile?.class_name || 'Kelas 5';
+      const examTitle = sessionStorage.getItem('sicakap_mapel') || `Asesmen CBT SD • ${studentKelas}`;
       const examDuration = (sessionStorage.getItem('sicakap_durasi') || '60') + ' Menit';
       const initialToken = sessionStorage.getItem('sicakap_token') || 'CKP26A';
 
       const nameEl = document.getElementById('student-name');
       if (nameEl) nameEl.textContent = studentName;
       const nisnEl = document.getElementById('student-nisn');
-      if (nisnEl) nisnEl.textContent = `NISN: ${studentNisn} • Kelas 5 SD`;
+      if (nisnEl) nisnEl.textContent = `NISN: ${studentNisn} • ${studentKelas}`;
       const mapelEl = document.getElementById('mapel-title');
       if (mapelEl) mapelEl.textContent = examTitle;
       const initialsEl = document.getElementById('user-initials');

@@ -58,7 +58,7 @@ export function downloadQuestionTemplate() {
 }
 
 /** 2. Import Massal Bank Soal dari File .xlsx ke Tabel questions & question_keys */
-export async function importQuestionsFromExcel(file, { examId, schoolId }) {
+export async function importQuestionsFromExcel(file, { examId, schoolId, kelas = null }) {
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array' });
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -67,6 +67,7 @@ export async function importQuestionsFromExcel(file, { examId, schoolId }) {
   if (!rows.length) throw new Error('File Excel kosong.');
 
   let insertedCount = 0;
+  const activeKelas = kelas || (typeof window !== 'undefined' ? (window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name) : null);
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -115,6 +116,7 @@ export async function importQuestionsFromExcel(file, { examId, schoolId }) {
       .insert({
         exam_id: examId,
         school_id: schoolId,
+        kelas: activeKelas,
         order_no: Number(r.No) || i + 1,
         type,
         competency: String(r.Kompetensi || '').trim() || null,

@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   role public.app_role NOT NULL DEFAULT 'siswa',
   full_name TEXT NOT NULL,
   identifier VARCHAR(50), -- NISN (siswa) / NIP (guru/proktor/admin)
-  class_name VARCHAR(30), -- Misal: "Kelas 5A", "Kelas 6B"
+  class_name VARCHAR(50), -- Misal: "Kelas 5A", "Kelas 6B"
+  kelas VARCHAR(50),      -- Field terstandardisasi RBAC Isolasi Kelas (e.g. "Kelas 1", "Kelas 5A")
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.exams (
   title TEXT NOT NULL,
   subject TEXT NOT NULL, -- Literasi, Numerasi, IPAS, dll
   grade_level VARCHAR(20), -- Fase C / Kelas 5-6
+  kelas VARCHAR(50) NOT NULL DEFAULT 'Kelas 5', -- Isolasi Kelas Ujian
   duration_minutes INT NOT NULL DEFAULT 60 CHECK (duration_minutes > 0),
   token_code VARCHAR(10),
   token_expires_at TIMESTAMPTZ,
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS public.questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
   school_id UUID NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+  kelas VARCHAR(50), -- Isolasi Kelas Soal
   order_no INT NOT NULL DEFAULT 1,
   type public.question_type NOT NULL DEFAULT 'single',
   competency TEXT, -- Capaian Pembelajaran
@@ -102,6 +105,7 @@ CREATE TABLE IF NOT EXISTS public.exam_sessions (
   exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
   school_id UUID NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
   student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  kelas VARCHAR(50), -- Isolasi Kelas Sesi Ujian (e.g. "Kelas 5A")
   status public.session_status NOT NULL DEFAULT 'not_started',
   server_started_at TIMESTAMPTZ,
   submitted_at TIMESTAMPTZ,
@@ -129,7 +133,26 @@ CREATE TABLE IF NOT EXISTS public.student_answers (
   UNIQUE (session_id, question_id)
 );
 
--- 9. TABEL LOG PROKTOR & ANTI-CHEAT
+-- 9. TABEL REKAP HASIL & NILAI UJIAN (ISOLASI KELAS & MAPEL)
+CREATE TABLE IF NOT EXISTS public.exam_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES public.exam_sessions(id) ON DELETE CASCADE,
+  school_id UUID NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+  exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
+  student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  kelas VARCHAR(50) NOT NULL,
+  subject TEXT NOT NULL DEFAULT 'Asesmen CBT SD',
+  score NUMERIC(6,2) NOT NULL DEFAULT 0.00,
+  total_questions INT NOT NULL DEFAULT 0,
+  correct_count INT NOT NULL DEFAULT 0,
+  wrong_count INT NOT NULL DEFAULT 0,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (session_id)
+);
+
+-- 10. TABEL LOG PROKTOR & ANTI-CHEAT
 CREATE TABLE IF NOT EXISTS public.proctor_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES public.exam_sessions(id) ON DELETE CASCADE,
@@ -140,12 +163,12 @@ CREATE TABLE IF NOT EXISTS public.proctor_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 10. INDEX PERFORMA (UNTUK 40+ SISWA SERENTAK PER RUANG)
-CREATE INDEX IF NOT EXISTS idx_profiles_school_role ON public.profiles(school_id, role);
-CREATE INDEX IF NOT EXISTS idx_exams_school_status ON public.exams(school_id, status);
-CREATE INDEX IF NOT EXISTS idx_questions_exam ON public.questions(exam_id, order_no);
-CREATE INDEX IF NOT EXISTS idx_sessions_exam_status ON public.exam_sessions(exam_id, status);
-CREATE INDEX IF NOT EXISTS idx_sessions_student ON public.exam_sessions(student_id);
+-- 11. INDEX PERFORMA & ISOLASI KELAS (WAJIB TERINDEKS)
+CREATE INDEX IF NOT EXISTS idx_profiles_school_kelas_role ON public.profiles(school_id, kelas, role);
+CREATE INDEX IF NOT EXISTS idx_exams_school_kelas ON public.exams(school_id, kelas, status);
+CREATE INDEX IF NOT EXISTS idx_questions_school_kelas ON public.questions(school_id, kelas, exam_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_school_kelas ON public.exam_sessions(school_id, kelas, status);
+CREATE INDEX IF NOT EXISTS idx_results_school_kelas ON public.exam_results(school_id, kelas, exam_id);
 CREATE INDEX IF NOT EXISTS idx_answers_session ON public.student_answers(session_id);
 CREATE INDEX IF NOT EXISTS idx_logs_session ON public.proctor_logs(session_id, created_at DESC);
 

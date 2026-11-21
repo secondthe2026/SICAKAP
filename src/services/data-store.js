@@ -23,6 +23,23 @@ export const DataStore = {
     return null;
   },
 
+  // Helper to extract active user role
+  getActiveUserRole() {
+    if (typeof window !== 'undefined' && window.__SICAKAP_USER__?.profile?.role) {
+      return window.__SICAKAP_USER__.profile.role;
+    }
+    return null;
+  },
+
+  // Helper to extract active user assigned class (Isolasi Kelas)
+  getActiveUserKelas() {
+    if (typeof window !== 'undefined') {
+      const p = window.__SICAKAP_USER__?.profile;
+      return p?.kelas || p?.class_name || null;
+    }
+    return null;
+  },
+
   // ==========================================
   // 1. SCHOOLS (SEKOLAH)
   // ==========================================
@@ -77,7 +94,9 @@ export const DataStore = {
   // ==========================================
   // 2. PROFILES (PENGGUNA: SISWA, GURU, PROKTOR, ADMIN)
   // ==========================================
-  async fetchProfiles({ schoolId = null, role = null, className = null } = {}) {
+  async fetchProfiles({ schoolId = null, role = null, className = null, kelas = null } = {}) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
     const targetSchool = schoolId || this.getActiveSchoolId();
     let query = supabase.from('profiles').select('*, schools(npsn, name)');
 
@@ -87,8 +106,11 @@ export const DataStore = {
     if (role) {
       query = query.eq('role', role);
     }
-    if (className) {
-      query = query.eq('class_name', className);
+
+    // Isolasi Kelas Guru: Guru HANYA bisa membaca siswa di kelasnya sendiri
+    const effectiveKelas = (userRole === 'guru' && userKelas) ? userKelas : (kelas || className);
+    if (effectiveKelas) {
+      query = query.or(`kelas.eq."${effectiveKelas}",class_name.eq."${effectiveKelas}"`);
     }
 
     const { data, error } = await query.order('full_name', { ascending: true });
@@ -108,9 +130,26 @@ export const DataStore = {
   },
 
   async createProfile(profileData) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
+    const payload = {
+      ...profileData,
+      school_id: profileData.school_id || this.getActiveSchoolId(),
+    };
+
+    // Isolasi Kelas: Guru membuat siswa otomatis terkunci di kelasnya sendiri
+    if (userRole === 'guru' && userKelas) {
+      payload.role = 'siswa';
+      payload.kelas = userKelas;
+      payload.class_name = userKelas;
+    } else {
+      if (payload.kelas && !payload.class_name) payload.class_name = payload.kelas;
+      if (payload.class_name && !payload.kelas) payload.kelas = payload.class_name;
+    }
+
     const { data, error } = await supabase
       .from('profiles')
-      .insert([profileData])
+      .insert([payload])
       .select()
       .single();
     if (error) throw error;
@@ -131,7 +170,9 @@ export const DataStore = {
   // ==========================================
   // 3. EXAMS (PAKET UJIAN / ASESMEN)
   // ==========================================
-  async fetchExams({ schoolId = null, status = null } = {}) {
+  async fetchExams({ schoolId = null, status = null, kelas = null } = {}) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
     const targetSchool = schoolId || this.getActiveSchoolId();
     let query = supabase.from('exams').select('*');
 
@@ -140,6 +181,12 @@ export const DataStore = {
     }
     if (status) {
       query = query.eq('status', status);
+    }
+
+    // Isolasi Kelas: Guru & Siswa hanya dapat melihat paket ujian kelasnya
+    const effectiveKelas = (['guru', 'siswa'].includes(userRole) && userKelas) ? userKelas : kelas;
+    if (effectiveKelas) {
+      query = query.or(`kelas.eq."${effectiveKelas}",grade_level.eq."${effectiveKelas}"`);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -164,10 +211,19 @@ export const DataStore = {
   },
 
   async createExam(examData) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
     const payload = {
       ...examData,
       school_id: examData.school_id || this.getActiveSchoolId(),
     };
+
+    // Isolasi Kelas: Guru otomatis menetapkan kelas ujian sesuai penugasan
+    if (userRole === 'guru' && userKelas) {
+      payload.kelas = userKelas;
+      payload.grade_level = userKelas;
+    }
+
     const { data, error } = await supabase
       .from('exams')
       .insert([payload])
@@ -192,14 +248,19 @@ export const DataStore = {
   // 4. QUESTIONS (SOAL PUBLIK - TANPA KUNCI)
   // ==========================================
   async fetchQuestionsByExam(examId, schoolId = null) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
     const targetSchool = schoolId || this.getActiveSchoolId();
     let query = supabase
       .from('questions')
-      .select('id, exam_id, school_id, order_no, type, competency, stimulus, media_urls, prompt, options, points')
+      .select('id, exam_id, school_id, kelas, order_no, type, competency, stimulus, media_urls, prompt, options, points')
       .eq('exam_id', examId);
 
     if (targetSchool) {
       query = query.eq('school_id', targetSchool);
+    }
+    if (userRole === 'guru' && userKelas) {
+      query = query.eq('kelas', userKelas);
     }
 
     const { data, error } = await query.order('order_no', { ascending: true });
@@ -211,10 +272,18 @@ export const DataStore = {
   },
 
   async createQuestion(questionData) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
     const payload = {
       ...questionData,
       school_id: questionData.school_id || this.getActiveSchoolId(),
     };
+
+    // Isolasi Kelas pada butir soal
+    if (userRole === 'guru' && userKelas) {
+      payload.kelas = userKelas;
+    }
+
     const { data, error } = await supabase
       .from('questions')
       .insert([payload])
@@ -227,15 +296,22 @@ export const DataStore = {
   // ==========================================
   // 5. EXAM SESSIONS (SESI UJIAN SISWA)
   // ==========================================
-  async fetchSessionsByExam(examId, schoolId = null) {
+  async fetchSessionsByExam(examId, schoolId = null, kelas = null) {
+    const userRole = this.getActiveUserRole();
+    const userKelas = this.getActiveUserKelas();
     const targetSchool = schoolId || this.getActiveSchoolId();
     let query = supabase
       .from('exam_sessions')
-      .select('*, profiles(full_name, identifier, class_name)')
+      .select('*, profiles(full_name, identifier, class_name, kelas)')
       .eq('exam_id', examId);
 
     if (targetSchool) {
       query = query.eq('school_id', targetSchool);
+    }
+
+    const effectiveKelas = (userRole === 'guru' && userKelas) ? userKelas : kelas;
+    if (effectiveKelas) {
+      query = query.eq('kelas', effectiveKelas);
     }
 
     const { data, error } = await query.order('created_at', { ascending: true });

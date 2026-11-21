@@ -21,7 +21,7 @@
   <!-- Route Guard & RBAC Session Enforcement -->
   <script type="module">
     import { requireRole } from '/src/lib/guard.js';
-    requireRole(['guru', 'admin_sekolah', 'superadmin']);
+    requireRole(['guru']);
   </script>
   <!-- Supabase Client, Export Service & KaTeX Math Formula Rendering -->
   <script type="module">
@@ -40,13 +40,19 @@
     window.katex = katex;
     window.renderMathInElement = renderMathInElement;
 
-    // Hydrate live guru profile and school into Guru header
+    // Hydrate live guru profile and school into Guru header + Enforce Class Isolation
     (async () => {
       try {
         const session = await getCurrentUserProfile();
         if (session?.profile) {
           const p = session.profile;
           const schoolName = p.schools?.name || 'SD';
+          const teacherKelas = p.kelas || p.class_name || 'Kelas 5';
+          const teacherGrade = (teacherKelas.match(/\d+/) || ['5'])[0];
+          
+          window.__ACTIVE_GURU_KELAS__ = teacherKelas;
+          window.__ACTIVE_GURU_GRADE__ = teacherGrade;
+
           const nameEl = document.getElementById('guru-header-name');
           const emailEl = document.getElementById('guru-header-email');
           const dropName = document.getElementById('dropdown-guru-name');
@@ -57,8 +63,8 @@
           if (nameEl) nameEl.textContent = p.full_name || 'Guru SD';
           if (emailEl) emailEl.textContent = session.user?.email || '';
           if (dropName) dropName.textContent = p.full_name || 'Guru SD';
-          if (dropRole) dropRole.textContent = p.class_name ? `Wali ${p.class_name}` : `Guru SD • ${schoolName}`;
-          if (sbSchool) sbSchool.textContent = `• ${schoolName}`;
+          if (dropRole) dropRole.textContent = `Wali ${teacherKelas} • ${schoolName}`;
+          if (sbSchool) sbSchool.textContent = `• ${schoolName} (${teacherKelas})`;
           if (avatarEl) {
             const initials = (p.full_name || 'GUR')
               .split(' ')
@@ -67,6 +73,11 @@
               .substring(0, 2)
               .toUpperCase();
             avatarEl.textContent = initials || 'GUR';
+          }
+
+          // Trigger re-render with active class isolation
+          if (typeof window.initGuruData === 'function') {
+            window.initGuruData();
           }
         }
       } catch (err) {
@@ -713,16 +724,16 @@
       <form onsubmit="handleSaveSiswa(event)" class="space-y-3.5 text-xs">
         <input type="hidden" id="siswa-edit-id" value="">
 
-        <!-- Pilih Rombel + Buat Rombel Baru -->
+        <!-- Rombel / Kelas (Terkunci ke Kelas Guru) -->
         <div>
           <div class="flex items-center justify-between mb-1">
-            <label class="font-bold text-slate-700">Pilih Rombel</label>
-            <button type="button" onclick="openModal('modal-guru-add-rombel')" class="text-teal-700 hover:text-teal-800 font-black text-[11px] cursor-pointer">
-              + Buat Rombel Baru
-            </button>
+            <label class="font-bold text-slate-700">Penugasan Kelas (Terkunci)</label>
+            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+              🔒 Terkunci ke Kelas Anda
+            </span>
           </div>
-          <select id="siswa-rombel" required onchange="onSiswaRombelChange()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-teal-100">
-            <!-- Injected from sicakap_rombel -->
+          <select id="siswa-rombel" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-700 bg-slate-100 pointer-events-none cursor-not-allowed">
+            <!-- Injected from active teacher class -->
           </select>
         </div>
 
@@ -871,9 +882,14 @@
             <input type="text" id="guru-jadwal-mapel" required value="Matematika SD" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:ring-4 focus:ring-amber-100" />
           </div>
           <div>
-            <label class="block font-bold text-slate-700 mb-1">Rombel Sasaran</label>
-            <select id="guru-jadwal-rombel" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
-              <!-- Injected from rombel -->
+            <div class="flex items-center justify-between mb-1">
+              <label class="block font-bold text-slate-700">Rombel Sasaran</label>
+              <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                🔒 Terkunci
+              </span>
+            </div>
+            <select id="guru-jadwal-rombel" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-700 bg-slate-100 pointer-events-none cursor-not-allowed">
+              <!-- Injected from active teacher class -->
             </select>
           </div>
         </div>
@@ -946,8 +962,13 @@
             </select>
           </div>
           <div>
-            <label class="block font-bold text-slate-700 mb-1">Tingkat Kelas SD</label>
-            <select id="soal-tingkat" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block font-bold text-slate-700">Tingkat Kelas SD</label>
+              <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                🔒 Terkunci
+              </span>
+            </div>
+            <select id="soal-tingkat" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-700 bg-slate-100 pointer-events-none cursor-not-allowed">
               <option value="1">Kelas 1 SD (Fase A)</option>
               <option value="2">Kelas 2 SD (Fase A)</option>
               <option value="3">Kelas 3 SD (Fase B)</option>
@@ -1540,17 +1561,26 @@
     }
 
     function renderGuruStats() {
-      const siswas = SicakapDB.getSiswa();
-      const rombels = SicakapDB.getRombel();
-      const jadwals = SicakapDB.getJadwal();
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
+      const allSiswas = SicakapDB.getSiswa();
+      const allJadwals = SicakapDB.getJadwal();
+
+      const siswas = allSiswas.filter(s => {
+        const sk = s.kelas || s.class_name || s.rombelId;
+        return !sk || sk === activeKelas || String(sk).includes(activeKelas.replace('Kelas ', ''));
+      });
+      const jadwals = allJadwals.filter(j => {
+        const jk = j.kelas || j.rombelId;
+        return !jk || jk === activeKelas || String(jk).includes(activeKelas.replace('Kelas ', ''));
+      });
       const activeCount = siswas.filter(s => s.statusUjian === 'Sedang Mengerjakan').length;
 
       document.getElementById('stat-guru-siswa').textContent = siswas.length;
-      document.getElementById('stat-guru-rombel').textContent = rombels.length;
+      document.getElementById('stat-guru-rombel').textContent = 1;
       document.getElementById('stat-guru-jadwal').textContent = jadwals.length;
       document.getElementById('stat-guru-active').textContent = activeCount;
 
-      document.getElementById('badge-guru-rombel').textContent = rombels.length;
+      document.getElementById('badge-guru-rombel').textContent = 1;
       document.getElementById('badge-guru-siswa').textContent = siswas.length;
       document.getElementById('badge-guru-jadwal').textContent = jadwals.length;
     }
@@ -1845,25 +1875,26 @@
       initGuruData();
     }
 
-    // 2. DATA SISWA & PASSWORD
+    // 2. DATA SISWA & PASSWORD (ISOLASI KELAS GURU)
     function renderSiswaTable() {
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const siswas = SicakapDB.getSiswa();
       const rombels = SicakapDB.getRombel();
       const tbody = document.getElementById('table-siswa-body');
       const keyword = (document.getElementById('search-siswa')?.value || '').toLowerCase();
-      const filterRombel = document.getElementById('filter-siswa-rombel')?.value || 'ALL';
 
-      let filtered = siswas.filter(s => 
-        s.nama.toLowerCase().includes(keyword) || 
-        s.nisn.toLowerCase().includes(keyword)
-      );
-
-      if (filterRombel !== 'ALL') {
-        filtered = filtered.filter(s => s.rombelId === filterRombel);
-      }
+      // Isolasi Kelas Guru: HANYA tampilkan siswa di kelasnya sendiri
+      let filtered = siswas.filter(s => {
+        const studentKelas = s.kelas || s.class_name || s.rombelId;
+        const matchesClass = !studentKelas || studentKelas === activeKelas || String(studentKelas).includes(activeKelas.replace('Kelas ', ''));
+        return matchesClass && (
+          s.nama.toLowerCase().includes(keyword) || 
+          s.nisn.toLowerCase().includes(keyword)
+        );
+      });
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400 font-bold">Tidak ada data siswa yang cocok.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400 font-bold">Tidak ada data siswa ${activeKelas} yang cocok.</td></tr>`;
         updateGuruBulkToolbar('siswa');
         return;
       }
@@ -1959,52 +1990,80 @@
     }
 
     function openModalTambahSiswa() {
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       document.getElementById('siswa-edit-id').value = '';
       document.getElementById('siswa-nisn').value = '';
       document.getElementById('siswa-nama').value = '';
-      document.getElementById('modal-student-title').textContent = '🎒 Tambah Siswa Rombel';
+      document.getElementById('modal-student-title').textContent = `🎒 Tambah Siswa (${activeKelas})`;
       
       const rombelSelect = document.getElementById('siswa-rombel');
-      const rombelName = rombelSelect.options[rombelSelect.selectedIndex]?.text || 'SD5A';
-      document.getElementById('siswa-password').value = SicakapDB.generateStudentPassword('', '', rombelName);
+      if (rombelSelect) {
+        rombelSelect.innerHTML = `<option value="${activeKelas}" selected>${activeKelas} (Terkunci Sesuai Akun Guru)</option>`;
+        rombelSelect.value = activeKelas;
+      }
+      document.getElementById('siswa-password').value = SicakapDB.generateStudentPassword('', '', activeKelas);
       
       openModal('modal-add-student');
     }
 
     function editSiswa(id) {
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const siswa = SicakapDB.getSiswa().find(s => s.id === id);
       if (!siswa) return;
 
       document.getElementById('siswa-edit-id').value = siswa.id;
       document.getElementById('siswa-nisn').value = siswa.nisn;
       document.getElementById('siswa-nama').value = siswa.nama;
-      document.getElementById('siswa-rombel').value = siswa.rombelId;
+      const rombelSelect = document.getElementById('siswa-rombel');
+      if (rombelSelect) {
+        rombelSelect.innerHTML = `<option value="${activeKelas}" selected>${activeKelas} (Terkunci Sesuai Akun Guru)</option>`;
+        rombelSelect.value = activeKelas;
+      }
       document.getElementById('siswa-password').value = siswa.password;
-      document.getElementById('modal-student-title').textContent = '🎒 Edit Data Siswa & Password';
+      document.getElementById('modal-student-title').textContent = `🎒 Edit Data Siswa (${activeKelas})`;
       
       openModal('modal-add-student');
     }
 
-    function handleSaveSiswa(e) {
+    async function handleSaveSiswa(e) {
       e.preventDefault();
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const editId = document.getElementById('siswa-edit-id').value;
-      const rombelId = document.getElementById('siswa-rombel').value;
+      const rombelId = activeKelas;
       const nisn = document.getElementById('siswa-nisn').value.trim();
       const nama = document.getElementById('siswa-nama').value.trim();
       const password = document.getElementById('siswa-password').value.trim();
 
       if (editId) {
-        SicakapDB.updateSiswa(editId, { rombelId, nisn, nama, password });
-        showToast(`Data murid "${nama}" berhasil diperbarui!`);
+        SicakapDB.updateSiswa(editId, { rombelId, kelas: activeKelas, class_name: activeKelas, nisn, nama, password });
+        showToast(`Data murid "${nama}" (${activeKelas}) berhasil diperbarui!`);
       } else {
         SicakapDB.addSiswa({
           rombelId,
+          kelas: activeKelas,
+          class_name: activeKelas,
           nisn,
           nama,
           password,
           statusUjian: 'Belum Ujian'
         });
-        showToast(`Siswa "${nama}" dengan password "${password}" berhasil disimpan ke rombel!`);
+
+        // Sinkronisasi profil siswa ke Supabase (Otomatis role: siswa & kelas guru)
+        try {
+          if (window.DataStore && typeof window.DataStore.createProfile === 'function') {
+            await window.DataStore.createProfile({
+              full_name: nama,
+              nisn: nisn,
+              kelas: activeKelas,
+              class_name: activeKelas,
+              role: 'siswa'
+            });
+          }
+        } catch (err) {
+          console.warn('[Guru] Sync Supabase profile siswa:', err);
+        }
+
+        showToast(`Siswa "${nama}" (${activeKelas}) dengan password "${password}" berhasil disimpan!`);
       }
 
       closeModal('modal-add-student');
@@ -2042,14 +2101,20 @@
       showToast(`Password siswa berhasil diubah menjadi "${password}"!`);
     }
 
-    // 3. JADWAL ULANGAN
+    // 3. JADWAL ULANGAN (ISOLASI KELAS GURU)
     function renderGuruJadwalTable() {
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const jadwals = SicakapDB.getJadwal();
       const rombels = SicakapDB.getRombel();
       const tbody = document.getElementById('guru-jadwal-table-body');
 
-      if (jadwals.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Belum ada jadwal ulangan.</td></tr>`;
+      const filtered = jadwals.filter(j => {
+        const jk = j.kelas || j.rombelId;
+        return !jk || jk === activeKelas || String(jk).includes(activeKelas.replace('Kelas ', ''));
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Belum ada jadwal ulangan untuk ${activeKelas}.</td></tr>`;
         updateGuruBulkToolbar('jadwal');
         return;
       }
@@ -2136,10 +2201,11 @@
 
     function handleGuruSaveJadwal(e) {
       e.preventDefault();
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const editId = document.getElementById('guru-jadwal-edit-id').value;
       const namaUlangan = document.getElementById('guru-jadwal-nama').value.trim();
       const mapel = document.getElementById('guru-jadwal-mapel').value.trim();
-      const rombelId = document.getElementById('guru-jadwal-rombel').value;
+      const rombelId = activeKelas;
       const tanggal = document.getElementById('guru-jadwal-tanggal').value;
       const jamMulai = document.getElementById('guru-jadwal-jam').value;
       const durasiMenit = parseInt(document.getElementById('guru-jadwal-durasi').value) || 60;
@@ -2147,11 +2213,11 @@
       const status = document.getElementById('guru-jadwal-status').value;
 
       if (editId) {
-        SicakapDB.updateJadwal(editId, { namaUlangan, mapel, rombelId, tanggal, jamMulai, durasiMenit, token, status });
-        showToast(`Jadwal "${namaUlangan}" berhasil diperbarui!`);
+        SicakapDB.updateJadwal(editId, { namaUlangan, mapel, rombelId, kelas: activeKelas, tanggal, jamMulai, durasiMenit, token, status });
+        showToast(`Jadwal "${namaUlangan}" (${activeKelas}) berhasil diperbarui!`);
       } else {
-        SicakapDB.addJadwal({ namaUlangan, mapel, rombelId, tanggal, jamMulai, durasiMenit, token, status });
-        showToast(`Jadwal ulangan baru "${namaUlangan}" berhasil ditambahkan!`);
+        SicakapDB.addJadwal({ namaUlangan, mapel, rombelId, kelas: activeKelas, tanggal, jamMulai, durasiMenit, token, status });
+        showToast(`Jadwal ulangan baru "${namaUlangan}" (${activeKelas}) berhasil ditambahkan!`);
       }
 
       closeModal('modal-guru-jadwal');
@@ -2166,20 +2232,26 @@
       }
     }
 
-    // 4. LIVE SCORE GURU (REAL-TIME ACROSS TABS)
+    // 4. LIVE SCORE GURU (ISOLASI KELAS GURU)
     function renderGuruMonitoring() {
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const siswas = SicakapDB.getSiswa();
       const rombels = SicakapDB.getRombel();
       const liveScores = SicakapDB.getLiveScores();
       const tbody = document.getElementById('table-guru-monitor-body');
 
-      if (siswas.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Belum ada murid di kelas.</td></tr>`;
+      const filteredSiswas = siswas.filter(s => {
+        const sk = s.kelas || s.class_name || s.rombelId;
+        return !sk || sk === activeKelas || String(sk).includes(activeKelas.replace('Kelas ', ''));
+      });
+
+      if (filteredSiswas.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400 font-bold">Belum ada murid di ${activeKelas}.</td></tr>`;
         updateGuruBulkToolbar('monitoring');
         return;
       }
 
-      tbody.innerHTML = siswas.map(s => {
+      tbody.innerHTML = filteredSiswas.map(s => {
         const rombel = rombels.find(r => r.id === s.rombelId);
         const rombelName = rombel ? rombel.namaRombel : '-';
         const live = liveScores.find(l => l.nisn === s.nisn) || {
@@ -2304,18 +2376,20 @@
       renderBankSoal();
     }
 
-    // Render Bank Soal SD Table (Wireframe UI/UX Pro)
+    // Render Bank Soal SD Table (ISOLASI TINGKAT KELAS GURU)
     function renderBankSoal() {
       const tbody = document.getElementById('guru-bank-table-body');
       if (!tbody) return;
 
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
+      const activeGrade = window.__ACTIVE_GURU_GRADE__ || (activeKelas.match(/\d+/) || ['5'])[0];
       const allSoal = SicakapDB.getSoal();
-      const filterKelas = document.getElementById('filter-soal-kelas')?.value || 'ALL';
       const searchQuery = (document.getElementById('search-soal')?.value || '').toLowerCase().trim();
 
       const filtered = allSoal.filter(s => {
+        const matchesGrade = !s.tingkat || String(s.tingkat) === String(activeGrade) || s.kelas === activeKelas;
+        if (!matchesGrade) return false;
         if (activeFilterMapel !== 'ALL' && s.mapel !== activeFilterMapel) return false;
-        if (filterKelas !== 'ALL' && String(s.tingkat) !== String(filterKelas)) return false;
         if (searchQuery) {
           const matchPertanyaan = (s.pertanyaan || '').toLowerCase().includes(searchQuery);
           const matchWacana = (s.wacana || '').toLowerCase().includes(searchQuery);
@@ -2331,7 +2405,7 @@
           <tr>
             <td colspan="6" class="py-12 text-center text-slate-400 font-bold space-y-2">
               <p class="text-3xl">📝</p>
-              <p class="text-slate-600 font-black">Tidak ada soal ditemukan pada filter ini.</p>
+              <p class="text-slate-600 font-black">Tidak ada soal ditemukan untuk ${activeKelas}.</p>
               <p class="text-xs font-medium">Klik <strong>"+ Buat Soal SD Baru"</strong> atau <strong>"📥 Import Word"</strong> untuk menambahkan butir soal.</p>
             </td>
           </tr>
@@ -2864,9 +2938,11 @@
         saveBtn.innerHTML = '<span>⏳ Menyimpan...</span>';
       }
 
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
+      const activeGrade = window.__ACTIVE_GURU_GRADE__ || (activeKelas.match(/\d+/) || ['5'])[0];
       const editId = document.getElementById('soal-edit-id').value;
       const mapel = document.getElementById('soal-mapel').value;
-      const tingkat = document.getElementById('soal-tingkat').value;
+      const tingkat = activeGrade;
       const tipe = document.getElementById('soal-tipe').value;
       const cpTp = document.getElementById('soal-cp').value.trim();
       const wacana = document.getElementById('soal-wacana').value.trim();
@@ -2959,6 +3035,7 @@
           const questionRow = {
             school_id: schoolId,
             exam_id: examId,
+            kelas: activeKelas,
             type: tipe,
             competency: cpTp,
             stimulus: wacana,
@@ -3017,6 +3094,7 @@
         id: supabaseQuestionId || editId,
         mapel,
         tingkat,
+        kelas: activeKelas,
         tipe,
         wacana,
         pertanyaan,
@@ -3450,56 +3528,74 @@
     }
 
     function populateGuruDropdowns() {
-      const rombels = SicakapDB.getRombel();
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
+      const activeGrade = window.__ACTIVE_GURU_GRADE__ || (activeKelas.match(/\d+/) || ['5'])[0];
 
-      // Dropdown Rombel di modal siswa
+      // Dropdown Rombel di modal siswa (TERKUNCI KE KELAS GURU)
       const selSiswaRombel = document.getElementById('siswa-rombel');
       if (selSiswaRombel) {
-        selSiswaRombel.innerHTML = rombels.map(r => `<option value="${r.id}">${r.namaRombel} (${r.fase})</option>`).join('');
+        selSiswaRombel.innerHTML = `<option value="${activeKelas}" selected>${activeKelas} (Terkunci Sesuai Akun Guru)</option>`;
+        selSiswaRombel.classList.add('bg-slate-100', 'pointer-events-none', 'text-slate-600');
       }
 
-      // Dropdown filter di tabel siswa
+      // Dropdown filter di tabel siswa (HANYA KELAS GURU)
       const filterRombel = document.getElementById('filter-siswa-rombel');
       if (filterRombel) {
-        filterRombel.innerHTML = '<option value="ALL">Semua Rombel</option>' + 
-          rombels.map(r => `<option value="${r.id}">${r.namaRombel}</option>`).join('');
+        filterRombel.innerHTML = `<option value="${activeKelas}" selected>${activeKelas} (Terkunci)</option>`;
+        filterRombel.disabled = true;
+        filterRombel.classList.add('bg-slate-100', 'cursor-not-allowed');
       }
 
-      // Dropdown Rombel di modal jadwal
+      // Dropdown Rombel di modal jadwal (TERKUNCI KE KELAS GURU)
       const selJadwalRombel = document.getElementById('guru-jadwal-rombel');
       if (selJadwalRombel) {
-        selJadwalRombel.innerHTML = rombels.map(r => `<option value="${r.id}">${r.namaRombel} (${r.fase})</option>`).join('');
+        selJadwalRombel.innerHTML = `<option value="${activeKelas}" selected>${activeKelas} (Terkunci Sesuai Akun Guru)</option>`;
+        selJadwalRombel.classList.add('bg-slate-100', 'pointer-events-none', 'text-slate-600');
+      }
+
+      // Dropdown Tingkat di modal soal (TERKUNCI KE TINGKAT KELAS GURU)
+      const selSoalTingkat = document.getElementById('soal-tingkat');
+      if (selSoalTingkat) {
+        selSoalTingkat.value = activeGrade;
+        selSoalTingkat.classList.add('bg-slate-100', 'pointer-events-none', 'text-slate-600');
+      }
+
+      // Dropdown filter kelas di bank soal
+      const filterSoalKelas = document.getElementById('filter-soal-kelas');
+      if (filterSoalKelas) {
+        filterSoalKelas.value = activeGrade;
+        filterSoalKelas.disabled = true;
+        filterSoalKelas.classList.add('bg-slate-100', 'cursor-not-allowed');
       }
 
       // Populate Dropdowns Mapel
       populateSoalMapelDropdown();
     }
 
-    // Export & Print Actions for Guru
+    // Export & Print Actions for Guru (Terkunci Sesuai Kelas)
     function printGuruKartuUjian() {
-      const rombelId = document.getElementById('filter-siswa-rombel') ? document.getElementById('filter-siswa-rombel').value : 'RMB-5A';
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 1';
       if (window.SicakapExport) {
-        SicakapExport.printKartuUjian({ rombelId: rombelId });
+        SicakapExport.printKartuUjian({ rombelId: activeKelas, kelas: activeKelas });
       } else {
         alert('Modul ekspor cetak belum terpasang!');
       }
     }
 
     function printGuruBeritaAcara() {
-      const rombelId = document.getElementById('filter-siswa-rombel') ? document.getElementById('filter-siswa-rombel').value : 'RMB-5A';
-      const rId = (rombelId && rombelId !== 'ALL') ? rombelId : 'RMB-5A';
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 1';
       if (window.SicakapExport) {
-        SicakapExport.printBeritaAcaraDaftarHadir({ rombelId: rId, mapelName: 'Matematika SD (Fase C)' });
+        SicakapExport.printBeritaAcaraDaftarHadir({ rombelId: activeKelas, kelas: activeKelas, mapelName: `Asesmen ${activeKelas}` });
       } else {
         alert('Modul ekspor cetak belum terpasang!');
       }
     }
 
     function exportGuruLiveScoreExcel() {
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 1';
       const mapel = document.getElementById('guru-livescore-mapel') ? document.getElementById('guru-livescore-mapel').value : 'Matematika SD';
-      const rombelId = 'RMB-5A'; // Rombel Wali Guru 5A
       if (window.SicakapExport) {
-        SicakapExport.exportExcelLiveScores({ mapel: mapel, rombelId: rombelId });
+        SicakapExport.exportExcelLiveScores({ mapel: mapel, rombelId: activeKelas, kelas: activeKelas });
       } else {
         alert('Modul ekspor Excel belum terpasang!');
       }
@@ -3507,6 +3603,21 @@
 
     // ================= FITUR 2: PENGATURAN AKUN GURU =================
     function getActiveGuru() {
+      const authProfile = window.__SICAKAP_USER__?.profile;
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || authProfile?.kelas || authProfile?.class_name || 'Kelas 1';
+      if (authProfile) {
+        return {
+          id: authProfile.id,
+          nama: authProfile.full_name,
+          nip: authProfile.nip || '-',
+          email: authProfile.email || window.__SICAKAP_USER__?.user?.email || '',
+          mapel: authProfile.subject || 'Guru Kelas',
+          rombelWali: activeKelas,
+          kelas: activeKelas,
+          class_name: activeKelas,
+          password: '••••••••'
+        };
+      }
       const allGurus = SicakapDB.getGuru();
       try {
         const raw = sessionStorage.getItem('sicakap_active_guru');

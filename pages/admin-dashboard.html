@@ -27,7 +27,7 @@
     window.getCurrentUserProfile = getCurrentUserProfile;
     window.signOutAndRedirect = signOutAndRedirect;
 
-    requireRole(['admin_sekolah', 'superadmin']);
+    requireRole(['admin_sekolah']);
 
     // Hydrate live admin profile and school into Admin header
     (async () => {
@@ -1098,9 +1098,18 @@
             <input type="text" id="guru-mapel" required placeholder="Contoh: Matematika &amp; IPAS" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400" />
           </div>
           <div>
-            <label class="block font-bold text-slate-700 mb-1">Wali Kelas (Opsional)</label>
-            <select id="guru-rombelwali" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-400">
-              <option value="">-- Bukan Wali Kelas --</option>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block font-bold text-slate-700">Penugasan Kelas (Wajib)</label>
+              <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">Wajib RBAC</span>
+            </div>
+            <select id="guru-rombelwali" required class="w-full px-3 py-2.5 rounded-xl border-2 border-teal-300 font-bold text-slate-800 bg-white focus:outline-none focus:ring-4 focus:ring-teal-100 focus:border-teal-500">
+              <option value="">-- Pilih Penugasan Kelas Guru --</option>
+              <option value="Kelas 1">Kelas 1 (Fase A)</option>
+              <option value="Kelas 2">Kelas 2 (Fase A)</option>
+              <option value="Kelas 3">Kelas 3 (Fase B)</option>
+              <option value="Kelas 4">Kelas 4 (Fase B)</option>
+              <option value="Kelas 5">Kelas 5 (Fase C)</option>
+              <option value="Kelas 6">Kelas 6 (Fase C)</option>
             </select>
           </div>
         </div>
@@ -1936,7 +1945,7 @@
       lucide.createIcons();
     }
 
-    function handleSaveGuru(e) {
+    async function handleSaveGuru(e) {
       e.preventDefault();
       const nama = document.getElementById('guru-nama').value.trim();
       const nip = document.getElementById('guru-nip').value.trim();
@@ -1945,23 +1954,48 @@
       const rombelWali = document.getElementById('guru-rombelwali').value;
       const password = document.getElementById('guru-password').value.trim() || 'cakap2026';
 
+      if (!rombelWali) {
+        alert('Penugasan kelas (Kelas 1 - 6) wajib dipilih untuk akun Guru!');
+        return;
+      }
+
       SicakapDB.addGuru({
         nama,
         nip,
         email,
         mapel,
         rombelWali,
+        kelas: rombelWali,
+        class_name: rombelWali,
         password
       });
+
+      // Sinkronisasi ke Supabase Profiles jika DataStore aktif
+      try {
+        if (window.DataStore && typeof window.DataStore.createProfile === 'function') {
+          await window.DataStore.createProfile({
+            full_name: nama,
+            nip: nip,
+            email: email,
+            subject: mapel,
+            kelas: rombelWali,
+            class_name: rombelWali,
+            role: 'guru'
+          });
+        }
+      } catch (err) {
+        console.warn('[Admin] Sync Supabase profile guru:', err);
+      }
 
       closeModal('modal-add-guru');
       document.getElementById('guru-nama').value = '';
       document.getElementById('guru-nip').value = '';
       document.getElementById('guru-email').value = '';
       document.getElementById('guru-mapel').value = '';
+      document.getElementById('guru-rombelwali').value = '';
       
       initAdminData();
-      showToast(`Guru "${nama}" berhasil ditambahkan & tersimpan ke LocalStorage!`);
+      showToast(`Guru "${nama}" (Penugasan: ${rombelWali}) berhasil disimpan!`);
     }
 
     function resetGuruPassword(id, nama) {
@@ -2375,11 +2409,18 @@
       const rombels = SicakapDB.getRombel();
       const gurus = SicakapDB.getGuru();
 
-      // Guru modal wali rombel select
+      // Guru modal wali rombel select (Wajib Penugasan Kelas 1-6)
       const selGuruWali = document.getElementById('guru-rombelwali');
       if (selGuruWali) {
-        selGuruWali.innerHTML = '<option value="">-- Bukan Wali Kelas --</option>' + 
-          rombels.map(r => `<option value="${r.id}">${r.namaRombel} (${r.fase})</option>`).join('');
+        selGuruWali.innerHTML = '<option value="">-- Pilih Penugasan Kelas Guru (Wajib) --</option>' + 
+          '<option value="Kelas 1">Kelas 1 (Fase A)</option>' +
+          '<option value="Kelas 2">Kelas 2 (Fase A)</option>' +
+          '<option value="Kelas 3">Kelas 3 (Fase B)</option>' +
+          '<option value="Kelas 4">Kelas 4 (Fase B)</option>' +
+          '<option value="Kelas 5">Kelas 5 (Fase C)</option>' +
+          '<option value="Kelas 6">Kelas 6 (Fase C)</option>' +
+          rombels.filter(r => !['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'].includes(r.namaRombel))
+            .map(r => `<option value="${r.namaRombel || r.id}">${r.namaRombel} (${r.fase})</option>`).join('');
       }
 
       // Rombel modal wali select
