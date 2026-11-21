@@ -23,6 +23,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Kata sandi minimal 6 karakter.' });
   }
 
+  const cleanNpsn = String(npsn).trim().replace(/\s+/g, '');
+  const cleanEmail = String(admin_email).trim().toLowerCase();
+
   // Cek apakah pemanggil adalah Superadmin
   let isSuperadmin = false;
   const authHeader = req.headers.authorization;
@@ -32,42 +35,87 @@ export default async function handler(req, res) {
     const { data: { user } } = await client.auth.getUser(token);
     if (user) {
       const { data: profile } = await client.from('profiles').select('role').eq('id', user.id).maybeSingle();
-      if (profile && profile.role === 'superadmin') {
+      if (profile && String(profile.role).toLowerCase() === 'superadmin') {
         isSuperadmin = true;
       }
     }
   }
 
-  // Jika bukan Superadmin, pendaftaran mandiri WAJIB is_active = false
+  // Pendaftaran mandiri dari publik WAJIB is_active = false & approval_status = 'pending'
   const finalIsActive = isSuperadmin ? Boolean(is_active) : false;
+  const finalApprovalStatus = isSuperadmin && is_active ? 'approved' : 'pending';
 
-  // Jika ada service role key, eksekusi admin API
+  // 1. Coba via RPC PostgreSQL (Atomic & Full Permissions via SECURITY DEFINER)
+  try {
+    const client = createClient(supabaseUrl, anonKey);
+    const { data: rpcData, error: rpcErr } = await client.rpc('register_school_and_admin', {
+      p_name: name.trim(),
+      p_npsn: cleanNpsn,
+      p_jenjang: jenjang || 'SD',
+      p_kabupaten: kabupaten ? kabupaten.trim() : null,
+      p_admin_email: cleanEmail,
+      p_password: password.trim(),
+      p_is_active: finalIsActive,
+    });
+
+    if (!rpcErr && rpcData?.success) {
+      return res.status(200).json({
+        ok: true,
+        message: 'Pendaftaran sekolah dan akun admin berhasil diproses.',
+        data: rpcData,
+        is_active: finalIsActive,
+        approval_status: finalApprovalStatus,
+      });
+    } else if (rpcErr && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
+      return res.status(400).json({ error: rpcErr.message });
+    }
+  } catch (err) {
+    console.warn('[Register School] RPC notice:', err.message);
+  }
+
+  // 2. Jika ada serviceRoleKey, jalankan transaksi server-side
   if (serviceRoleKey) {
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    let createdSchoolId = null;
+    let createdUserId = null;
+
     try {
-      // 1. Cek duplikasi NPSN
+      // Validasi NPSN unik
       const { data: existingSchool } = await adminClient
         .from('schools')
-        .select('id')
-        .eq('npsn', npsn)
+        .select('id, name')
+        .eq('npsn', cleanNpsn)
         .maybeSingle();
 
       if (existingSchool) {
-        return res.status(400).json({ error: `Sekolah dengan NPSN ${npsn} sudah terdaftar.` });
+        return res.status(400).json({ error: `Sekolah dengan NPSN ${cleanNpsn} sudah terdaftar (${existingSchool.name}).` });
       }
 
-      // 2. Buat record sekolah
+      // Validasi Email unik di school_credentials
+      const { data: existingCred } = await adminClient
+        .from('school_credentials')
+        .select('id')
+        .ilike('admin_email', cleanEmail)
+        .maybeSingle();
+
+      if (existingCred) {
+        return res.status(400).json({ error: `Email admin ${cleanEmail} sudah digunakan sekolah lain.` });
+      }
+
+      // Insert ke public.schools
       const { data: school, error: schoolErr } = await adminClient
         .from('schools')
         .insert([{
           name: name.trim(),
-          npsn: npsn.trim(),
+          npsn: cleanNpsn,
           jenjang: jenjang || 'SD',
-          kabupaten: kabupaten || null,
+          kabupaten: kabupaten ? kabupaten.trim() : null,
           is_active: finalIsActive,
+          approval_status: finalApprovalStatus,
+          approved_at: finalIsActive ? new Date().toISOString() : null,
         }])
         .select()
         .single();
@@ -75,73 +123,64 @@ export default async function handler(req, res) {
       if (schoolErr || !school) {
         throw new Error(schoolErr?.message || 'Gagal menyimpan data sekolah.');
       }
+      createdSchoolId = school.id;
 
-      // 3. Buat user Auth untuk admin_sekolah
+      // Buat user Auth untuk admin_sekolah
       const { data: authUser, error: authErr } = await adminClient.auth.admin.createUser({
-        email: admin_email.trim(),
+        email: cleanEmail,
         password: password.trim(),
         email_confirm: true,
         user_metadata: {
           full_name: `Admin ${name.trim()}`,
           role: 'admin_sekolah',
-          identifier: npsn.trim(),
+          identifier: cleanNpsn,
           school_id: school.id,
         },
       });
 
       if (authErr || !authUser?.user) {
-        await adminClient.from('schools').delete().eq('id', school.id);
         throw new Error(authErr?.message || 'Gagal membuat akun autentikasi admin.');
       }
+      createdUserId = authUser.user.id;
 
-      const userId = authUser.user.id;
-
-      // 4. Buat baris profiles
+      // Upsert profiles
       await adminClient.from('profiles').upsert({
-        id: userId,
+        id: createdUserId,
         school_id: school.id,
         role: 'admin_sekolah',
         full_name: `Admin ${name.trim()}`,
-        identifier: npsn.trim(),
+        identifier: cleanNpsn,
         is_active: finalIsActive,
       }, { onConflict: 'id' });
 
-      // 5. Simpan ke public.school_credentials
+      // Upsert school_credentials
       await adminClient.from('school_credentials').upsert({
         school_id: school.id,
-        admin_user_id: userId,
-        admin_email: admin_email.trim(),
+        admin_user_id: createdUserId,
+        admin_email: cleanEmail,
         initial_password: password.trim(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'school_id' });
 
       return res.status(200).json({
         ok: true,
-        message: 'Pendaftaran sekolah dan akun admin berhasil diproses.',
+        message: 'Pendaftaran sekolah dan akun admin berhasil disimpan.',
         school,
-        admin_email: admin_email.trim(),
+        admin_email: cleanEmail,
         is_active: finalIsActive,
+        approval_status: finalApprovalStatus,
       });
     } catch (err) {
       console.error('Register school error:', err);
-      return res.status(500).json({ error: err.message || 'Terjadi kesalahan server saat mendaftarkan sekolah.' });
+      if (createdUserId) {
+        try { await adminClient.auth.admin.deleteUser(createdUserId); } catch (_) {}
+      }
+      if (createdSchoolId) {
+        try { await adminClient.from('schools').delete().eq('id', createdSchoolId); } catch (_) {}
+      }
+      return res.status(500).json({ error: err.message || 'Terjadi kesalahan saat mendaftarkan sekolah.' });
     }
-  } else {
-    // Fallback via RPC Supabase
-    const client = createClient(supabaseUrl, anonKey);
-    const { data, error } = await client.rpc('register_school_and_admin', {
-      p_name: name,
-      p_npsn: npsn,
-      p_jenjang: jenjang || 'SD',
-      p_kabupaten: kabupaten || null,
-      p_admin_email: admin_email.trim(),
-      p_password: password.trim(),
-      p_is_active: finalIsActive,
-    });
-
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-    return res.status(200).json({ ok: true, data });
   }
+
+  return res.status(500).json({ error: 'Gagal memproses pendaftaran sekolah. Periksa konfigurasi RPC Supabase.' });
 }

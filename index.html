@@ -77,6 +77,10 @@
 
       <!-- Right Action Button & Mobile Toggle -->
       <div class="flex items-center gap-2 sm:gap-3">
+        <button type="button" onclick="openCheckStatusModal()" class="px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-white/95 hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 shadow-2xs flex items-center gap-1.5 transition duration-200 cursor-pointer">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-indigo-600"></i>
+          <span>Cek Status</span>
+        </button>
         <button type="button" onclick="openRegisterSchoolModal()" class="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-black shadow-sm shadow-amber-400/30 flex items-center gap-1.5 transition transform hover:scale-105 active:scale-95 cursor-pointer">
           <i data-lucide="school" class="w-4 h-4"></i>
           <span>+ Daftarkan SD Baru</span>
@@ -315,7 +319,11 @@
             <p class="text-xs text-slate-600 font-semibold">
               Belum punya akun sekolah? 
               <button type="button" onclick="openRegisterSchoolModal()" class="font-black text-sky-600 hover:text-sky-700 hover:underline inline-flex items-center gap-1 ml-1 cursor-pointer">
-                <span>🏫 + Daftarkan SD Baru</span>
+                <span>🏫 Daftar SD Baru</span>
+              </button>
+              <span class="mx-1.5 text-slate-300">|</span>
+              <button type="button" onclick="openCheckStatusModal()" class="font-bold text-indigo-600 hover:text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer">
+                <span>🔍 Cek Status Persetujuan</span>
               </button>
             </p>
           </div>
@@ -348,6 +356,67 @@
       </span>
     </div>
   </footer>
+
+
+  <!-- ================= MODAL CEK STATUS PENDAFTARAN SEKOLAH (PUBLIK & AUTO-POLLING) ================= -->
+  <div id="modal-check-status" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative border border-indigo-100 animate-in fade-in zoom-in-95 duration-200">
+      
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+            <i data-lucide="search-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-slate-900">Cek Status Persetujuan Sekolah</h3>
+            <p class="text-[11px] text-slate-500 font-medium">Pantau verifikasi pendaftaran institusi SD/MI</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeCheckStatusModal()" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block font-bold text-slate-700 text-xs mb-1">NPSN atau Email Admin Sekolah</label>
+          <div class="flex items-center gap-1.5">
+            <input type="text" id="check-status-input" placeholder="Masukkan 8 digit NPSN atau email..." 
+              class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" 
+              onkeydown="if(event.key === 'Enter'){ event.preventDefault(); performCheckStatus(); }" />
+            <button type="button" onclick="performCheckStatus()" id="btn-do-check-status" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs transition cursor-pointer shrink-0 shadow-xs">
+              Periksa
+            </button>
+          </div>
+        </div>
+
+        <!-- Wadah Kartu Hasil Status -->
+        <div id="check-status-result" class="min-h-[140px] flex flex-col justify-center">
+          <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-center space-y-1">
+            <span class="text-2xl">📋</span>
+            <p class="text-xs font-bold text-slate-700">Masukkan NPSN sekolah Anda</p>
+            <p class="text-[11px] text-slate-500">Hasil verifikasi dari Superadmin akan ditampilkan di sini.</p>
+          </div>
+        </div>
+
+        <!-- Polling Indicator -->
+        <div id="check-polling-indicator" class="hidden text-center text-[10px] text-slate-400 flex items-center justify-center gap-1.5 pt-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Auto-refresh aktif setiap 30 detik • Terakhir dicek: <span id="check-last-time">-</span></span>
+        </div>
+      </div>
+
+      <div class="pt-2 flex items-center justify-between border-t border-slate-100 text-xs">
+        <button type="button" onclick="openRegisterSchoolModal()" class="text-indigo-600 hover:text-indigo-800 font-bold hover:underline">
+          + Daftar Sekolah Baru
+        </button>
+        <button type="button" onclick="closeCheckStatusModal()" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
+          Tutup
+        </button>
+      </div>
+
+    </div>
+  </div>
 
   <!-- ================= MODAL PENDAFTARAN SEKOLAH DASAR (SD/MI) BARU ================= -->
   <div id="modal-register-school" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
@@ -500,6 +569,222 @@
         loadingMsg: '✨ Otorisasi Superadmin Terverifikasi! Membuka Portal Persetujuan Sekolah...'
       }
     };
+
+
+    // ================= FITUR CEK STATUS PENDAFTARAN SEKOLAH =================
+    let checkStatusPollingInterval = null;
+    let currentCheckQuery = '';
+
+    function openCheckStatusModal(prefillQuery = '') {
+      closeRegisterSchoolModal();
+      const modal = document.getElementById('modal-check-status');
+      const input = document.getElementById('check-status-input');
+      if (input && prefillQuery) {
+        input.value = prefillQuery;
+      }
+      if (modal) modal.classList.remove('hidden');
+      lucide.createIcons();
+
+      if (prefillQuery) {
+        performCheckStatus();
+      }
+    }
+
+    function closeCheckStatusModal() {
+      const modal = document.getElementById('modal-check-status');
+      if (modal) modal.classList.add('hidden');
+      if (checkStatusPollingInterval) {
+        clearInterval(checkStatusPollingInterval);
+        checkStatusPollingInterval = null;
+      }
+      const indicator = document.getElementById('check-polling-indicator');
+      if (indicator) indicator.classList.add('hidden');
+    }
+
+    async function performCheckStatus(isAutoPoll = false) {
+      const input = document.getElementById('check-status-input');
+      const query = (input?.value || currentCheckQuery || '').trim();
+      const resultContainer = document.getElementById('check-status-result');
+      const indicator = document.getElementById('check-polling-indicator');
+      const timeEl = document.getElementById('check-last-time');
+      const btn = document.getElementById('btn-do-check-status');
+
+      if (!query) {
+        showToast('❌ Masukkan NPSN atau Email Admin Sekolah.');
+        return;
+      }
+      currentCheckQuery = query;
+
+      if (!isAutoPoll && resultContainer) {
+        resultContainer.innerHTML = `
+          <div class="p-6 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-center space-y-2">
+            <div class="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p class="text-xs font-bold text-indigo-900">Memeriksa status ke database pusat...</p>
+          </div>
+        `;
+      }
+
+      if (btn) btn.disabled = true;
+
+      try {
+        let resData = null;
+
+        // 1. Coba via API route
+        try {
+          const res = await fetch('/api/schools/check-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+          });
+          if (res.ok) {
+            resData = await res.json();
+          }
+        } catch (apiErr) {
+          console.warn('[Check Status] API route notice:', apiErr.message);
+        }
+
+        // 2. Fallback via RPC Supabase
+        if (!resData && window.supabase) {
+          const { data, error } = await window.supabase.rpc('check_school_registration_status', {
+            p_query: query
+          });
+          if (!error && data) {
+            resData = data;
+          }
+        }
+
+        const nowTimeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        if (timeEl) timeEl.textContent = nowTimeStr;
+        if (indicator) indicator.classList.remove('hidden');
+
+        if (!resData || !resData.found) {
+          resultContainer.innerHTML = `
+            <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-center space-y-2">
+              <span class="text-2xl">🔍</span>
+              <p class="text-xs font-black text-rose-800">Sekolah Tidak Ditemukan</p>
+              <p class="text-[11px] text-rose-600 leading-snug">
+                Pendaftaran dengan NPSN/Email "${query}" belum tercatat di database.
+              </p>
+              <button type="button" onclick="openRegisterSchoolModal()" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs cursor-pointer">
+                Daftarkan Sekolah Sekarang
+              </button>
+            </div>
+          `;
+          if (checkStatusPollingInterval) {
+            clearInterval(checkStatusPollingInterval);
+            checkStatusPollingInterval = null;
+          }
+          return;
+        }
+
+        const status = resData.approval_status;
+        const dateStr = resData.created_at
+          ? new Date(resData.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '-';
+
+        if (status === 'approved' || resData.is_active) {
+          resultContainer.innerHTML = `
+            <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2.5 text-xs animate-in zoom-in-95 duration-200">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-800 text-[11px] uppercase tracking-wide">Status Pendaftaran</span>
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black border border-emerald-300 flex items-center gap-1">
+                  <span>✓</span> Disetujui &amp; Aktif
+                </span>
+              </div>
+              <div>
+                <p class="font-black text-sm text-slate-900">${resData.school_name}</p>
+                <p class="text-slate-500 font-mono text-[11px]">NPSN: ${resData.npsn} • Jenjang: ${resData.jenjang}</p>
+              </div>
+              <p class="text-[11px] text-emerald-800 leading-relaxed font-medium bg-white/70 p-2.5 rounded-xl border border-emerald-100">
+                🎉 Selamat! Akun sekolah Anda telah diverifikasi oleh Superadmin. Silakan masuk sebagai <strong>Admin SD</strong> menggunakan email dan kata sandi yang telah didaftarkan.
+              </p>
+              <button type="button" onclick="proceedToAdminLogin('${resData.npsn}')" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black flex items-center justify-center gap-2 shadow-sm cursor-pointer transition">
+                <span>🚀 Masuk ke Dashboard Admin -></span>
+              </button>
+            </div>
+          `;
+          if (checkStatusPollingInterval) {
+            clearInterval(checkStatusPollingInterval);
+            checkStatusPollingInterval = null;
+          }
+          if (isAutoPoll) {
+            showToast(`🎉 Sekolah "${resData.school_name}" telah disetujui!`);
+          }
+        } else if (status === 'rejected') {
+          resultContainer.innerHTML = `
+            <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-2.5 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-800 text-[11px] uppercase tracking-wide">Status Pendaftaran</span>
+                <span class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-black border border-rose-300">
+                  ✕ Pendaftaran Ditolak
+                </span>
+              </div>
+              <div>
+                <p class="font-black text-sm text-slate-900">${resData.school_name}</p>
+                <p class="text-slate-500 font-mono text-[11px]">NPSN: ${resData.npsn}</p>
+              </div>
+              <div class="p-2.5 rounded-xl bg-white border border-rose-200 text-rose-800 text-[11px] space-y-1">
+                <span class="font-bold">Alasan Penolakan:</span>
+                <p class="italic font-medium">${resData.rejection_reason || 'Persyaratan data pendaftaran tidak memenuhi kualifikasi.'}</p>
+              </div>
+              <button type="button" onclick="openRegisterSchoolModal()" class="w-full py-2 rounded-xl bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 font-bold text-xs transition cursor-pointer">
+                Ajukan Pendaftaran Ulang
+              </button>
+            </div>
+          `;
+          if (checkStatusPollingInterval) {
+            clearInterval(checkStatusPollingInterval);
+            checkStatusPollingInterval = null;
+          }
+        } else {
+          // Status: Pending
+          resultContainer.innerHTML = `
+            <div class="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-2.5 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-800 text-[11px] uppercase tracking-wide">Status Pendaftaran</span>
+                <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-black border border-amber-300 animate-pulse">
+                  ⏳ Menunggu Persetujuan
+                </span>
+              </div>
+              <div>
+                <p class="font-black text-sm text-slate-900">${resData.school_name}</p>
+                <p class="text-slate-500 font-mono text-[11px]">NPSN: ${resData.npsn} • Tgl Daftar: ${dateStr}</p>
+              </div>
+              <p class="text-[11px] text-amber-900 leading-snug bg-white/70 p-2.5 rounded-xl border border-amber-100">
+                Pendaftaran Anda sedang dalam antrean verifikasi Superadmin. Halaman ini akan <strong>otomatis memperbarui status</strong> setiap 30 detik.
+              </p>
+              <button type="button" onclick="performCheckStatus()" class="w-full py-2 rounded-xl bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span>Periksa Status Sekarang</span>
+              </button>
+            </div>
+          `;
+
+          if (!checkStatusPollingInterval) {
+            checkStatusPollingInterval = setInterval(() => {
+              performCheckStatus(true);
+            }, 30000);
+          }
+        }
+
+        lucide.createIcons();
+      } catch (err) {
+        showToast(`❌ Gagal memeriksa: ${err.message || 'Koneksi error'}`);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function proceedToAdminLogin(npsn) {
+      closeCheckStatusModal();
+      selectRole('admin');
+      const usrInput = document.getElementById('staff-username');
+      if (usrInput && npsn) {
+        usrInput.value = npsn;
+      }
+      document.getElementById('staff-password')?.focus();
+      showToast('Silakan masukkan kata sandi Admin Sekolah Anda.');
+    }
 
     // Dinamis Ganti Peran (Role Switcher)
     function selectRole(role) {
@@ -822,7 +1107,8 @@
         const pwdEl = document.getElementById('reg-school-password');
         if (pwdEl) pwdEl.value = '';
 
-        showToast(`✅ Pendaftaran "${name}" berhasil dikirim! Menunggu Approval Superadmin.`);
+        showToast(`✅ Pendaftaran "${name}" berhasil dikirim! Membuka kartu status...`);
+        openCheckStatusModal(npsn);
       } catch (err) {
         closeRegisterSchoolModal();
         showToast(`❌ Gagal mendaftar: ${err.message || 'Terjadi kesalahan'}`);

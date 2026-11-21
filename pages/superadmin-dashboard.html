@@ -159,6 +159,9 @@
           <button onclick="filterApprovalTable('approved')" id="f-approved" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 cursor-pointer">
             Disetujui (<span id="count-approved">0</span>)
           </button>
+          <button onclick="filterApprovalTable('rejected')" id="f-rejected" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 cursor-pointer">
+            Ditolak (<span id="count-rejected">0</span>)
+          </button>
         </div>
       </div>
 
@@ -511,8 +514,9 @@
         const totalStudents = countErr ? 0 : (studentCount || 0);
 
         // 3. Update stats cards
-        const pendingCount = schoolsData.filter(s => !s.is_active).length;
-        const approvedCount = schoolsData.filter(s => s.is_active).length;
+        const pendingCount = schoolsData.filter(s => (s.approval_status === 'pending' || (!s.is_active && s.approval_status !== 'rejected'))).length;
+        const approvedCount = schoolsData.filter(s => s.approval_status === 'approved' || (s.is_active && s.approval_status !== 'rejected')).length;
+        const rejectedCount = schoolsData.filter(s => s.approval_status === 'rejected').length;
 
         document.getElementById('stat-pending').textContent = pendingCount;
         document.getElementById('stat-approved').textContent = approvedCount;
@@ -522,6 +526,8 @@
         document.getElementById('count-all').textContent = schoolsData.length;
         document.getElementById('count-pending').textContent = pendingCount;
         document.getElementById('count-approved').textContent = approvedCount;
+        const countRejectedEl = document.getElementById('count-rejected');
+        if (countRejectedEl) countRejectedEl.textContent = rejectedCount;
 
         renderSubmissionsTable();
         renderActiveSchoolsGrid();
@@ -537,8 +543,13 @@
       if (!tbody) return;
 
       const filtered = schoolsData.filter(item => {
-        if (currentFilter === 'pending') return !item.is_active;
-        if (currentFilter === 'approved') return item.is_active;
+        const isPending = item.approval_status === 'pending' || (!item.is_active && item.approval_status !== 'rejected');
+        const isApproved = item.approval_status === 'approved' || (item.is_active && item.approval_status !== 'rejected');
+        const isRejected = item.approval_status === 'rejected';
+
+        if (currentFilter === 'pending') return isPending;
+        if (currentFilter === 'approved') return isApproved;
+        if (currentFilter === 'rejected') return isRejected;
         return true;
       });
 
@@ -554,13 +565,27 @@
       }
 
       tbody.innerHTML = filtered.map(item => {
-        const isApproved = item.is_active;
-        const statusBadge = isApproved
-          ? `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">✓ Disetujui (Aktif)</span>`
-          : `<span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">Menunggu Approval</span>`;
+        const isPending = item.approval_status === 'pending' || (!item.is_active && item.approval_status !== 'rejected');
+        const isApproved = item.approval_status === 'approved' || (item.is_active && item.approval_status !== 'rejected');
+        const isRejected = item.approval_status === 'rejected';
 
-        const actionButtons = isApproved
-          ? `
+        let statusBadge = '';
+        if (isApproved) {
+          statusBadge = `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">✓ Disetujui (Aktif)</span>`;
+        } else if (isRejected) {
+          statusBadge = `
+            <div class="inline-flex flex-col items-center">
+              <span class="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200">✕ Ditolak</span>
+              ${item.rejection_reason ? `<span class="text-[10px] text-rose-600 mt-0.5 max-w-[140px] truncate" title="${item.rejection_reason}">Alasan: ${item.rejection_reason}</span>` : ''}
+            </div>
+          `;
+        } else {
+          statusBadge = `<span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">Menunggu Approval</span>`;
+        }
+
+        let actionButtons = '';
+        if (isApproved) {
+          actionButtons = `
             <div class="flex items-center justify-center gap-1.5">
               <button onclick="openSchoolCredentialsModal('${item.id}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer" title="Kelola Kredensial Login Admin Sekolah">
                 <i data-lucide="key" class="w-3.5 h-3.5"></i>
@@ -574,23 +599,41 @@
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
             </div>
-          `
-          : `
+          `;
+        } else if (isRejected) {
+          actionButtons = `
             <div class="flex items-center justify-center gap-1.5">
               <button onclick="openSchoolCredentialsModal('${item.id}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer" title="Lihat Kredensial Admin Sekolah">
                 <i data-lucide="key" class="w-3.5 h-3.5"></i>
                 <span>Kredensial</span>
               </button>
-              <button onclick="toggleSchoolActive('${item.id}', false, '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer">
+              <button onclick="approveSchool('${item.id}', '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer" title="Setujui Ulang">
                 <i data-lucide="check" class="w-3.5 h-3.5"></i>
                 <span>Setujui</span>
               </button>
-              <button onclick="deleteSchool('${item.id}', '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
+              <button onclick="deleteSchool('${item.id}', '${item.name}')" class="p-1.5 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Hapus Sekolah">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          `;
+        } else {
+          actionButtons = `
+            <div class="flex items-center justify-center gap-1.5">
+              <button onclick="openSchoolCredentialsModal('${item.id}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer" title="Lihat Kredensial Admin Sekolah">
+                <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                <span>Kredensial</span>
+              </button>
+              <button onclick="approveSchool('${item.id}', '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                <span>Setujui</span>
+              </button>
+              <button onclick="rejectSchool('${item.id}', '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
                 <span>Tolak</span>
               </button>
             </div>
           `;
+        }
 
         const createdAtStr = item.created_at
           ? new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -668,7 +711,10 @@
       try {
         const { error } = await supabase
           .from('schools')
-          .update({ is_active: nextStatus })
+          .update({
+            is_active: nextStatus,
+            approval_status: nextStatus ? 'approved' : 'rejected'
+          })
           .eq('id', schoolId);
 
         if (error) throw error;
@@ -677,6 +723,53 @@
         await loadSuperadminData();
       } catch (err) {
         showToast(`❌ Gagal ${actionLabel} sekolah: ${err.message}`);
+      }
+    }
+
+    // Approve School (Setujui pendaftaran)
+    async function approveSchool(schoolId, schoolName) {
+      if (!confirm(`Setujui pendaftaran sekolah "${schoolName}"? Akun admin akan diaktifkan.`)) return;
+      showToast(`⏳ Menyetujui sekolah "${schoolName}"...`);
+      try {
+        const { error } = await supabase
+          .from('schools')
+          .update({
+            is_active: true,
+            approval_status: 'approved',
+            approved_at: new Date().toISOString(),
+            rejection_reason: null
+          })
+          .eq('id', schoolId);
+
+        if (error) throw error;
+        showToast(`✅ Sekolah "${schoolName}" berhasil disetujui!`);
+        await loadSuperadminData();
+      } catch (err) {
+        showToast(`❌ Gagal menyetujui sekolah: ${err.message}`);
+      }
+    }
+
+    // Reject School (Tolak pendaftaran)
+    async function rejectSchool(schoolId, schoolName) {
+      const reason = prompt(`Masukkan alasan penolakan untuk "${schoolName}":`, 'Data NPSN tidak valid atau belum terdaftar di Dapodik.');
+      if (reason === null) return; // user cancelled
+
+      showToast(`⏳ Menolak pendaftaran "${schoolName}"...`);
+      try {
+        const { error } = await supabase
+          .from('schools')
+          .update({
+            is_active: false,
+            approval_status: 'rejected',
+            rejection_reason: reason.trim() || 'Pendaftaran ditolak oleh Superadmin.'
+          })
+          .eq('id', schoolId);
+
+        if (error) throw error;
+        showToast(`Sekolah "${schoolName}" telah ditolak.`);
+        await loadSuperadminData();
+      } catch (err) {
+        showToast(`❌ Gagal menolak sekolah: ${err.message}`);
       }
     }
 
@@ -804,7 +897,7 @@
     // Filter Table Handler
     function filterApprovalTable(filter) {
       currentFilter = filter;
-      ['all', 'pending', 'approved'].forEach(f => {
+      ['all', 'pending', 'approved', 'rejected'].forEach(f => {
         const btn = document.getElementById(`f-${f}`);
         if (btn) {
           if (f === filter) {
@@ -1050,6 +1143,8 @@
     window.closeAddSchoolModal = closeAddSchoolModal;
     window.handleCreateSchool = handleCreateSchool;
     window.toggleSchoolActive = toggleSchoolActive;
+    window.approveSchool = approveSchool;
+    window.rejectSchool = rejectSchool;
     window.deleteSchool = deleteSchool;
     window.filterApprovalTable = filterApprovalTable;
     window.loadSuperadminData = loadSuperadminData;
@@ -1077,6 +1172,28 @@
 
       await initUserInfo();
       await loadSuperadminData();
+
+      // Realtime subscription on public.schools & public.school_credentials
+      try {
+        supabase
+          .channel('superadmin-schools-channel')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'schools' }, () => {
+            console.log('[Superadmin] Realtime event on schools, refreshing...');
+            loadSuperadminData();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'school_credentials' }, () => {
+            console.log('[Superadmin] Realtime event on credentials, refreshing...');
+            loadSuperadminData();
+          })
+          .subscribe();
+      } catch (subErr) {
+        console.warn('[Superadmin] Realtime subscription notice:', subErr);
+      }
+
+      // Auto-polling fallback every 25s
+      setInterval(() => {
+        loadSuperadminData();
+      }, 25000);
     });
   </script>
 </body>

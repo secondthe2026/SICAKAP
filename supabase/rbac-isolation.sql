@@ -50,8 +50,15 @@ CREATE TABLE IF NOT EXISTS public.schools (
   jenjang VARCHAR(10) NOT NULL DEFAULT 'SD',
   kabupaten TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
+  approval_status TEXT NOT NULL DEFAULT 'pending',
+  rejection_reason TEXT,
+  approved_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
 
 -- B. TABEL PROFILES
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -993,3 +1000,77 @@ $$;
 GRANT EXECUTE ON FUNCTION public.register_school_and_admin TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.superadmin_reset_school_password TO authenticated;
 GRANT EXECUTE ON FUNCTION public.superadmin_clear_school_password TO authenticated;
+
+-- ============================================================
+-- 12. KOLOM APPROVAL & RPC CEK STATUS PENDAFTARAN SEKOLAH
+-- ============================================================
+
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+
+-- Backfill sekolah aktif yang sudah ada
+UPDATE public.schools
+SET approval_status = 'approved',
+    approved_at = coalesce(approved_at, updated_at, now())
+WHERE is_active = true AND approval_status = 'pending';
+
+-- RPC: Cek Status Pendaftaran Sekolah (Publik & Non-Sensitif)
+CREATE OR REPLACE FUNCTION public.check_school_registration_status(
+  p_query TEXT
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_clean_query TEXT;
+  v_school RECORD;
+BEGIN
+  v_clean_query := lower(regexp_replace(trim(p_query), '\s+', '', 'g'));
+
+  IF length(v_clean_query) = 0 THEN
+    RETURN jsonb_build_object('found', false, 'message', 'Kata kunci pencarian tidak boleh kosong');
+  END IF;
+
+  -- 1. Cari via NPSN di tabel schools
+  SELECT id, name, npsn, jenjang, kabupaten, is_active, approval_status, rejection_reason, created_at, approved_at
+  INTO v_school
+  FROM public.schools
+  WHERE lower(npsn) = v_clean_query
+  LIMIT 1;
+
+  -- 2. Jika tidak ditemukan dan input berupa email, cari via admin_email di school_credentials
+  IF v_school.id IS NULL AND p_query LIKE '%@%' THEN
+    SELECT s.id, s.name, s.npsn, s.jenjang, s.kabupaten, s.is_active, s.approval_status, s.rejection_reason, s.created_at, s.approved_at
+    INTO v_school
+    FROM public.schools s
+    JOIN public.school_credentials sc ON sc.school_id = s.id
+    WHERE lower(sc.admin_email) = lower(trim(p_query))
+    LIMIT 1;
+  END IF;
+
+  IF v_school.id IS NULL THEN
+    RETURN jsonb_build_object(
+      'found', false,
+      'message', 'Pendaftaran sekolah dengan NPSN atau Email tersebut tidak ditemukan.'
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'found', true,
+    'school_name', v_school.name,
+    'npsn', v_school.npsn,
+    'jenjang', coalesce(v_school.jenjang, 'SD'),
+    'kabupaten', coalesce(v_school.kabupaten, '-'),
+    'approval_status', coalesce(v_school.approval_status, CASE WHEN v_school.is_active THEN 'approved' ELSE 'pending' END),
+    'is_active', coalesce(v_school.is_active, false),
+    'rejection_reason', v_school.rejection_reason,
+    'created_at', v_school.created_at,
+    'approved_at', v_school.approved_at
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.check_school_registration_status TO authenticated, anon;
