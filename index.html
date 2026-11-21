@@ -637,7 +637,8 @@
           throw new Error('Koneksi database Supabase belum terinisialisasi.');
         }
 
-        const email = username;
+        // Email staf/admin/superadmin tanpa konversi ke domain siswa
+        const email = username.trim();
         const { data, error } = await window.supabase.auth.signInWithPassword({
           email: email,
           password: password,
@@ -647,33 +648,66 @@
           throw new Error(error?.message || 'Email atau kata sandi salah.');
         }
 
+        text.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><strong>Memuat profil &amp; hak akses...</strong>';
+
+        // Query profil dengan select('*') dan maybeSingle() agar cocok dengan RLS
         const { data: profile, error: profErr } = await window.supabase
           .from('profiles')
-          .select('id, school_id, role, full_name, identifier, is_active')
+          .select('*')
           .eq('id', data.user.id)
-          .single();
+          .maybeSingle();
 
-        if (profErr || !profile) {
+        if (profErr) {
+          console.error('[Staff Login] Error fetching profile:', profErr);
+          throw new Error('Gagal mengambil data profil dari database.');
+        }
+
+        if (!profile) {
           await window.supabase.auth.signOut();
           throw new Error('Data profil pengguna tidak ditemukan di database.');
         }
 
-        if (!profile.is_active) {
+        if (profile.is_active === false) {
           await window.supabase.auth.signOut();
           throw new Error('Akun Anda sedang dinonaktifkan oleh Administrator.');
         }
 
-        const roleKey = profile.role;
-        const destination = (window.ROLE_DASHBOARD_MAP && window.ROLE_DASHBOARD_MAP[roleKey]) || theme.redirectUrl;
+        // Normalisasi role
+        const roleKey = String(profile.role || '').toLowerCase().trim();
+        profile.role = roleKey;
+
+        // Validasi sekolah HANYA untuk non-superadmin!
+        if (roleKey !== 'superadmin' && profile.school_id) {
+          const { data: school, error: schErr } = await window.supabase
+            .from('schools')
+            .select('is_active')
+            .eq('id', profile.school_id)
+            .maybeSingle();
+
+          if (!schErr && school && school.is_active === false) {
+            await window.supabase.auth.signOut();
+            throw new Error('Sekolah Anda belum aktif atau sedang dalam peninjauan Superadmin.');
+          }
+        }
+
+        const dashboardMap = {
+          superadmin: '/pages/superadmin-dashboard.html',
+          admin_sekolah: '/pages/admin-dashboard.html',
+          proktor: '/pages/proktor-dashboard.html',
+          guru: '/pages/guru-dashboard.html',
+          siswa: '/pages/exam-room.html',
+        };
+
+        const destination = dashboardMap[roleKey] || (window.ROLE_DASHBOARD_MAP && window.ROLE_DASHBOARD_MAP[roleKey]) || theme.redirectUrl;
         sessionStorage.setItem('sicakap_active_role', roleKey);
-        sessionStorage.setItem('sicakap_name', profile.full_name);
+        sessionStorage.setItem('sicakap_name', profile.full_name || 'Pengguna');
 
         text.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 inline mr-1"></i><strong>✨ Otorisasi Supabase Berhasil (${roleKey})! Mengalihkan...</strong>`;
         lucide.createIcons();
 
         setTimeout(() => {
           window.location.href = destination;
-        }, 400);
+        }, 300);
       } catch (err) {
         if (submitBtn) submitBtn.disabled = false;
         feedback.classList.add('hidden');

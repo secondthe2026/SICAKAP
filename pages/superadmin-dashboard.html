@@ -316,7 +316,7 @@
     // Initialize User Info in Header
     async function initUserInfo() {
       try {
-        const session = await getCurrentUserProfile();
+        const session = window.__SICAKAP_USER__ || await getCurrentUserProfile();
         if (session) {
           const { user, profile } = session;
           const nameEl = document.getElementById('superadmin-name');
@@ -608,7 +608,7 @@
       // Logout handler
       document.getElementById('btn-superadmin-logout')?.addEventListener('click', async (e) => {
         e.preventDefault();
-        await signOutAndRedirect('../index.html');
+        await signOutAndRedirect('/index.html');
       });
 
       await initUserInfo();

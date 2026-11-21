@@ -54,24 +54,93 @@ if (typeof window !== 'undefined') {
 
 export async function getCurrentUserProfile() {
   try {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (!sessionError && session?.user) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, school_id, role, full_name, identifier, class_name, kelas, is_active, schools(npsn, name, is_active)')
-        .eq('id', session.user.id)
-        .single();
-
-      if (!profileError && profile && profile.is_active) {
-        return { user: session.user, profile };
+    // 1. Ambil session aktif (dengan retry ringan untuk atasi race condition saat reload browser)
+    let session = null;
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (!sessionError && sessionData?.session) {
+      session = sessionData.session;
+    } else {
+      // Retry jeda 120ms jika storage auth browser sedang diinisialisasi
+      await new Promise(r => setTimeout(r, 120));
+      const retryResult = await supabase.auth.getSession();
+      if (!retryResult.error && retryResult.data?.session) {
+        session = retryResult.data.session;
       }
     }
-  } catch (err) {
-    console.warn('[SICAKAP Auth] Supabase getSession error:', err);
-  }
 
-  // No mock fallback in production - strictly authenticated Supabase sessions only
-  return null;
+    if (!session?.user) {
+      // Backup coba ambil langsung via getUser()
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (!userError && userData?.user) {
+        session = { user: userData.user };
+      }
+    }
+
+    if (!session?.user) {
+      return null;
+    }
+
+    const userId = session.user.id;
+
+    // 2. Query tabel profiles: gunakan select('*') dan .maybeSingle() agar 100% cocok dengan RLS policy users_read_own_profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('[SICAKAP Auth] Error mengambil profil pengguna:', profileError);
+      return null;
+    }
+
+    if (!profile) {
+      console.error('[SICAKAP Auth] Baris profil tidak ditemukan di database untuk user ID:', userId);
+      return null;
+    }
+
+    // 3. Normalisasi role huruf kecil tanpa spasi
+    const normalizedRole = String(profile.role || '').toLowerCase().trim();
+    profile.role = normalizedRole;
+
+    // 4. Validasi keaktifan akun user
+    if (profile.is_active === false) {
+      console.warn('[SICAKAP Auth] Akun pengguna dinonaktifkan:', userId);
+      return null;
+    }
+
+    // 5. BYPASS KHUSUS SUPERADMIN: Superadmin pengelola pusat, WAJIB lolos tanpa validasi sekolah
+    if (normalizedRole === 'superadmin') {
+      profile.schools = null;
+      return { user: session.user, profile, isSuperadmin: true };
+    }
+
+    // 6. NON-SUPERADMIN: Ambil data sekolah secara opsional (LEFT JOIN aman)
+    if (profile.school_id) {
+      try {
+        const { data: school, error: schoolErr } = await supabase
+          .from('schools')
+          .select('id, npsn, name, is_active')
+          .eq('id', profile.school_id)
+          .maybeSingle();
+
+        if (!schoolErr && school) {
+          profile.schools = school;
+          if (school.is_active === false) {
+            console.warn('[SICAKAP Auth] Sekolah pengguna berstatus nonaktif:', profile.school_id);
+            return { user: session.user, profile, schoolInactive: true };
+          }
+        }
+      } catch (sErr) {
+        console.warn('[SICAKAP Auth] Warning membaca relasi sekolah:', sErr);
+      }
+    }
+
+    return { user: session.user, profile };
+  } catch (err) {
+    console.error('[SICAKAP Auth] Exception pada getCurrentUserProfile:', err);
+    return null;
+  }
 }
 
 export async function signOutAndRedirect(redirectTo = '/index.html') {

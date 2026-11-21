@@ -298,6 +298,10 @@ CREATE POLICY "school_members_read_own_school" ON public.schools
 CREATE POLICY "users_read_own_profile" ON public.profiles
   FOR SELECT USING (id = auth.uid());
 
+CREATE POLICY "superadmin_read_all_profiles" ON public.profiles
+  FOR SELECT USING (public.get_my_role() = 'superadmin');
+
+
 CREATE POLICY "users_update_own_profile" ON public.profiles
   FOR UPDATE USING (id = auth.uid())
   WITH CHECK (id = auth.uid() AND role::text = public.get_my_role());
