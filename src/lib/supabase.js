@@ -19,13 +19,46 @@ export const supabase = createClient(
   }
 );
 
+/**
+ * Konversi NISN ke format email auth internal tanpa domain publik
+ * @param {string|number} nisn
+ * @returns {string} Contoh: "0084928192@siswa.sicakap.local"
+ */
+export function nisnToAuthEmail(nisn) {
+  const cleanNisn = String(nisn || '').trim().replace(/\s+/g, '');
+  return `${cleanNisn}@siswa.sicakap.local`;
+}
+
+/**
+ * Client Auth terpisah tanpa persistSession untuk membuat/mendaftarkan akun Siswa
+ * Mencegah sesi login Guru tertimpa / auto-logout saat menambah siswa
+ */
+export function createUnpersistedAuthClient() {
+  return createClient(
+    supabaseUrl || 'https://placeholder.supabase.co',
+    supabaseAnonKey || 'placeholder-anon-key',
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    }
+  );
+}
+
+if (typeof window !== 'undefined') {
+  window.nisnToAuthEmail = nisnToAuthEmail;
+  window.createUnpersistedAuthClient = createUnpersistedAuthClient;
+}
+
 export async function getCurrentUserProfile() {
   try {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (!sessionError && session?.user) {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, school_id, role, full_name, identifier, class_name, is_active, schools(npsn, name)')
+        .select('id, school_id, role, full_name, identifier, class_name, kelas, is_active, schools(npsn, name, is_active)')
         .eq('id', session.user.id)
         .single();
 

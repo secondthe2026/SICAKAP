@@ -2165,6 +2165,9 @@
               <button onclick="SicakapExport.printKartuUjian({ rombelId: '${s.rombelId}' })" class="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-bold text-xs transition cursor-pointer" title="Cetak Kartu Siswa">
                 🖨️ Kartu
               </button>
+              <button onclick="copyAdminStudentCredentials('${s.nama}', '${rombelName}', '${s.nisn}', '${s.password}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer" title="Salin Akun Login Siswa (NISN & Password)">
+                📋 Salin
+              </button>
               <button onclick="resetAdminSiswaPassword('${s.id}', '${s.nama}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs transition cursor-pointer" title="Reset Password Siswa">
                 🔑 Reset Sandi
               </button>
@@ -2179,9 +2182,32 @@
       lucide.createIcons();
     }
 
-    function resetAdminSiswaPassword(id, nama) {
+    function copyAdminStudentCredentials(nama, rombel, nisn, password) {
+      const text = `KARTU LOGIN UJIAN SI-CAKAP\nNama: ${nama}\nKelas/Rombel: ${rombel}\nNISN: ${nisn}\nPassword: ${password}\nURL Login: https://digitalpemula-sicakap.vercel.app`;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`Akun login "${nama}" (NISN: ${nisn}) berhasil disalin!`);
+      }).catch(() => {
+        showToast(`NISN: ${nisn} | Password: ${password}`);
+      });
+    }
+
+    async function resetAdminSiswaPassword(id, nama) {
+      const siswa = SicakapDB.getSiswa().find(s => s.id === id || s.nisn === id);
+      const nisn = siswa ? siswa.nisn : id;
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const newPwd = `CAKAP-${randomNum}`;
+
+      try {
+        if (window.supabase) {
+          await window.supabase.rpc('admin_reset_student_password', {
+            p_nisn: nisn,
+            p_new_password: newPwd
+          });
+        }
+      } catch (err) {
+        console.warn('[Admin] Reset password cloud error:', err);
+      }
+
       SicakapDB.updateSiswa(id, { password: newPwd });
       renderAdminSiswaTable();
       showToast(`Password siswa "${nama}" berhasil direset ke "${newPwd}"!`);

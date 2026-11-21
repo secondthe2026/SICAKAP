@@ -23,10 +23,11 @@
   <script type="module" src="/src/services/data-store.js"></script>
   <!-- Supabase Auth & Role Matrix Bridge -->
   <script type="module">
-    import { supabase, getCurrentUserProfile } from '/src/lib/supabase.js';
+    import { supabase, getCurrentUserProfile, nisnToAuthEmail } from '/src/lib/supabase.js';
     import { ROLE_DASHBOARD_MAP } from '/src/lib/guard.js';
 
     window.supabase = supabase;
+    window.nisnToAuthEmail = nisnToAuthEmail;
     window.ROLE_DASHBOARD_MAP = ROLE_DASHBOARD_MAP;
     window.getCurrentUserProfile = getCurrentUserProfile;
   </script>
@@ -237,19 +238,19 @@
           <!-- ================= TAMPILAN SAAT TAB [🎒 Murid] AKTIF ================= -->
           <form id="form-murid" onsubmit="handleMuridSubmit(event)" class="space-y-3">
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">🪪 Nomor Peserta / NISN</label>
+              <label class="block text-xs font-bold text-slate-700 mb-1">🪪 NISN</label>
               <div class="relative">
                 <i data-lucide="user-check" class="w-4 h-4 text-sky-500 absolute left-3.5 top-3"></i>
-                <input type="text" id="murid-nisn" required placeholder="Contoh: 0084928192" 
+                <input type="text" id="murid-nisn" inputmode="numeric" required placeholder="Masukkan NISN kamu" 
                   class="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100 transition" />
               </div>
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">🔑 Kata Sandi</label>
+              <label class="block text-xs font-bold text-slate-700 mb-1">🔑 Password</label>
               <div class="relative">
                 <i data-lucide="key" class="w-4 h-4 text-sky-500 absolute left-3.5 top-3"></i>
-                <input type="password" id="murid-pwd" required placeholder="••••••••••" 
+                <input type="password" id="murid-pwd" required placeholder="Masukkan password kamu" 
                   class="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 bg-white focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100 transition" />
               </div>
             </div>
@@ -532,14 +533,15 @@
     // ================= REDIRECT HANDLER TAB [ MURID ] -> pages/exam-room.html =================
     async function handleMuridSubmit(e) {
       e.preventDefault();
-      const nisn = document.getElementById('murid-nisn').value.trim();
+      const rawNisn = document.getElementById('murid-nisn').value;
+      const cleanNisn = String(rawNisn || '').trim().replace(/\s+/g, '');
       const password = document.getElementById('murid-pwd').value.trim();
       const token = document.getElementById('murid-token').value.trim().toUpperCase();
       const feedback = document.getElementById('login-feedback');
       const text = document.getElementById('feedback-text');
 
-      if (!nisn || !password) {
-        showToast('❌ Mohon masukkan NISN dan Kata Sandi.');
+      if (!cleanNisn || !password) {
+        showToast('❌ Mohon masukkan NISN dan Password.');
         return;
       }
 
@@ -549,46 +551,51 @@
       }
 
       feedback.classList.remove('hidden');
-      text.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><strong>Memverifikasi peserta ujian ke Supabase...</strong>';
+      text.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><strong>Memverifikasi NISN peserta...</strong>';
 
       try {
         if (!window.supabase) {
           throw new Error('Koneksi Supabase belum siap');
         }
 
-        const email = `${nisn}@siswa.sicakap.id`;
+        const authEmail = window.nisnToAuthEmail ? window.nisnToAuthEmail(cleanNisn) : `${cleanNisn}@siswa.sicakap.local`;
         const { data, error } = await window.supabase.auth.signInWithPassword({
-          email: email,
+          email: authEmail,
           password: password,
         });
 
         if (error || !data?.user) {
-          throw new Error(error?.message || 'Nomor peserta (NISN) atau kata sandi tidak valid.');
+          throw new Error('NISN atau password salah. Hubungi guru kelas kamu.');
         }
 
         const { data: profile, error: profErr } = await window.supabase
           .from('profiles')
-          .select('id, school_id, role, full_name, identifier, class_name, is_active')
+          .select('id, school_id, role, full_name, identifier, class_name, kelas, is_active, schools(name, is_active)')
           .eq('id', data.user.id)
           .single();
 
-        if (profErr || !profile) {
+        if (profErr || !profile || profile.role !== 'siswa') {
           await window.supabase.auth.signOut();
-          throw new Error('Data profil siswa tidak ditemukan di sistem.');
+          throw new Error('NISN atau password salah. Hubungi guru kelas kamu.');
         }
 
         if (!profile.is_active) {
           await window.supabase.auth.signOut();
-          throw new Error('Akun siswa Anda dinonaktifkan. Hubungi admin sekolah.');
+          throw new Error('Akun siswa kamu dinonaktifkan. Hubungi guru kelas kamu.');
         }
 
-        sessionStorage.setItem('sicakap_active_role', profile.role || 'siswa');
-        sessionStorage.setItem('sicakap_nisn', nisn);
+        if (profile.schools && profile.schools.is_active === false) {
+          await window.supabase.auth.signOut();
+          throw new Error('Sekolah kamu belum aktif atau sedang dalam peninjauan. Hubungi guru kelas kamu.');
+        }
+
+        sessionStorage.setItem('sicakap_active_role', 'siswa');
+        sessionStorage.setItem('sicakap_nisn', cleanNisn);
         sessionStorage.setItem('sicakap_token', token);
         sessionStorage.setItem('sicakap_name', profile.full_name || 'Siswa');
-        sessionStorage.setItem('sicakap_rombel', profile.class_name || 'SD');
+        sessionStorage.setItem('sicakap_rombel', profile.kelas || profile.class_name || 'SD');
 
-        const destination = (window.ROLE_DASHBOARD_MAP && window.ROLE_DASHBOARD_MAP[profile.role]) || 'pages/exam-room.html';
+        const destination = (window.ROLE_DASHBOARD_MAP && window.ROLE_DASHBOARD_MAP['siswa']) || 'pages/exam-room.html';
         text.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 inline mr-1"></i><strong>✨ Verifikasi Berhasil! Menyiapkan ruang ujian untuk ${profile.full_name}...</strong>`;
         lucide.createIcons();
 
@@ -597,7 +604,11 @@
         }, 400);
       } catch (err) {
         feedback.classList.add('hidden');
-        showToast(`❌ Login gagal: ${err.message || 'Verifikasi siswa gagal'}`);
+        let safeMsg = err.message || 'NISN atau password salah. Hubungi guru kelas kamu.';
+        if (safeMsg.includes('@') || safeMsg.toLowerCase().includes('email') || safeMsg.toLowerCase().includes('invalid login')) {
+          safeMsg = 'NISN atau password salah. Hubungi guru kelas kamu.';
+        }
+        showToast(`❌ ${safeMsg}`);
       }
     }
 
