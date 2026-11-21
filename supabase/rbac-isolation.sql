@@ -761,3 +761,235 @@ $$;
 -- Berikan izin eksekusi RPC ke pengguna terautentikasi dan anon
 GRANT EXECUTE ON FUNCTION public.admin_create_student TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.admin_reset_student_password TO authenticated, anon;
+
+-- ============================================================
+-- 11. TABEL KREDENSIAL SEKOLAH (KHUSUS SUPERADMIN - ANTI LEAK)
+-- Mematuhi Spesifikasi Isolasi: Terpisah dari Tabel Umum
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.school_credentials (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID UNIQUE NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+  admin_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  admin_email TEXT NOT NULL,
+  initial_password TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.school_credentials ENABLE ROW LEVEL SECURITY;
+
+-- RLS: HANYA Superadmin yang memiliki akses baca, tulis, ubah, dan hapus
+DROP POLICY IF EXISTS "superadmin_only_credentials" ON public.school_credentials;
+CREATE POLICY "superadmin_only_credentials" ON public.school_credentials
+  FOR ALL
+  USING (public.get_my_role() = 'superadmin')
+  WITH CHECK (public.get_my_role() = 'superadmin');
+
+-- RPC: Pendaftaran Sekolah & Pembuatan Akun Admin Sekolah
+CREATE OR REPLACE FUNCTION public.register_school_and_admin(
+  p_name TEXT,
+  p_npsn TEXT,
+  p_jenjang TEXT,
+  p_kabupaten TEXT DEFAULT NULL,
+  p_admin_email TEXT DEFAULT NULL,
+  p_password TEXT DEFAULT NULL,
+  p_is_active BOOLEAN DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_school_id UUID;
+  v_user_id UUID;
+  v_clean_npsn TEXT;
+  v_clean_email TEXT;
+  v_encrypted_pwd TEXT;
+  v_caller_role TEXT;
+  v_final_is_active BOOLEAN;
+BEGIN
+  v_clean_npsn := regexp_replace(trim(p_npsn), '\s+', '', 'g');
+  v_clean_email := lower(trim(p_admin_email));
+  v_caller_role := public.get_my_role();
+
+  -- Jika bukan superadmin, status wajib false (menunggu persetujuan superadmin)
+  IF v_caller_role = 'superadmin' THEN
+    v_final_is_active := coalesce(p_is_active, true);
+  ELSE
+    v_final_is_active := false;
+  END IF;
+
+  -- 1. Cek duplikasi NPSN
+  SELECT id INTO v_school_id FROM public.schools WHERE npsn = v_clean_npsn LIMIT 1;
+  IF v_school_id IS NOT NULL THEN
+    RAISE EXCEPTION 'Sekolah dengan NPSN % sudah terdaftar', v_clean_npsn;
+  END IF;
+
+  v_school_id := gen_random_uuid();
+  INSERT INTO public.schools (id, name, npsn, jenjang, kabupaten, is_active, created_at, updated_at)
+  VALUES (v_school_id, trim(p_name), v_clean_npsn, coalesce(p_jenjang, 'SD'), p_kabupaten, v_final_is_active, now(), now());
+
+  -- 2. Buat User Auth untuk Admin Sekolah jika email & password diberikan
+  IF v_clean_email IS NOT NULL AND p_password IS NOT NULL AND length(trim(p_password)) >= 6 THEN
+    SELECT id INTO v_user_id FROM auth.users WHERE email = v_clean_email LIMIT 1;
+    v_encrypted_pwd := crypt(p_password, gen_salt('bf'));
+
+    IF v_user_id IS NULL THEN
+      v_user_id := gen_random_uuid();
+      INSERT INTO auth.users (
+        id, instance_id, email, encrypted_password, email_confirmed_at,
+        raw_app_meta_data, raw_user_meta_data, created_at, updated_at, role, confirmation_token
+      ) VALUES (
+        v_user_id, '00000000-0000-0000-0000-000000000000', v_clean_email, v_encrypted_pwd, now(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('full_name', 'Admin ' || trim(p_name), 'role', 'admin_sekolah', 'identifier', v_clean_npsn, 'school_id', v_school_id),
+        now(), now(), 'authenticated', encode(gen_random_bytes(32), 'hex')
+      );
+
+      INSERT INTO auth.identities (
+        id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+      ) VALUES (
+        v_user_id::text, v_user_id,
+        jsonb_build_object('sub', v_user_id::text, 'email', v_clean_email),
+        'email', v_user_id::text, now(), now(), now()
+      ) ON CONFLICT (provider, provider_id) DO NOTHING;
+    ELSE
+      UPDATE auth.users
+      SET encrypted_password = v_encrypted_pwd,
+          raw_user_meta_data = jsonb_build_object('full_name', 'Admin ' || trim(p_name), 'role', 'admin_sekolah', 'identifier', v_clean_npsn, 'school_id', v_school_id),
+          updated_at = now()
+      WHERE id = v_user_id;
+    END IF;
+
+    -- 3. Upsert profiles
+    INSERT INTO public.profiles (
+      id, school_id, role, full_name, identifier, is_active, created_at, updated_at
+    ) VALUES (
+      v_user_id, v_school_id, 'admin_sekolah'::public.app_role, 'Admin ' || trim(p_name), v_clean_npsn, v_final_is_active, now(), now()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      school_id = EXCLUDED.school_id,
+      role = EXCLUDED.role,
+      full_name = EXCLUDED.full_name,
+      identifier = EXCLUDED.identifier,
+      is_active = EXCLUDED.is_active,
+      updated_at = now();
+
+    -- 4. Simpan ke public.school_credentials
+    INSERT INTO public.school_credentials (
+      school_id, admin_user_id, admin_email, initial_password, created_at, updated_at
+    ) VALUES (
+      v_school_id, v_user_id, v_clean_email, trim(p_password), now(), now()
+    )
+    ON CONFLICT (school_id) DO UPDATE SET
+      admin_user_id = EXCLUDED.admin_user_id,
+      admin_email = EXCLUDED.admin_email,
+      initial_password = EXCLUDED.initial_password,
+      updated_at = now();
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'school_id', v_school_id,
+    'admin_user_id', v_user_id,
+    'admin_email', v_clean_email,
+    'is_active', v_final_is_active
+  );
+END;
+$$;
+
+-- RPC: Reset Password Admin Sekolah oleh Superadmin
+CREATE OR REPLACE FUNCTION public.superadmin_reset_school_password(
+  p_school_id UUID,
+  p_new_password TEXT
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_email TEXT;
+  v_encrypted_pwd TEXT;
+BEGIN
+  IF public.get_my_role() <> 'superadmin' THEN
+    RAISE EXCEPTION 'Hanya Superadmin yang berhak mereset password admin sekolah';
+  END IF;
+
+  IF length(trim(p_new_password)) < 6 THEN
+    RAISE EXCEPTION 'Password minimal 6 karakter';
+  END IF;
+
+  SELECT admin_user_id, admin_email INTO v_user_id, v_email
+  FROM public.school_credentials
+  WHERE school_id = p_school_id
+  LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    SELECT id, identifier INTO v_user_id, v_email
+    FROM public.profiles
+    WHERE school_id = p_school_id AND role = 'admin_sekolah'
+    LIMIT 1;
+  END IF;
+
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Akun admin sekolah untuk ID % tidak ditemukan', p_school_id;
+  END IF;
+
+  v_encrypted_pwd := crypt(p_new_password, gen_salt('bf'));
+
+  UPDATE auth.users
+  SET encrypted_password = v_encrypted_pwd,
+      updated_at = now()
+  WHERE id = v_user_id;
+
+  INSERT INTO public.school_credentials (
+    school_id, admin_user_id, admin_email, initial_password, created_at, updated_at
+  ) VALUES (
+    p_school_id, v_user_id, coalesce(v_email, 'admin@sekolah.sch.id'), trim(p_new_password), now(), now()
+  )
+  ON CONFLICT (school_id) DO UPDATE SET
+    initial_password = trim(p_new_password),
+    updated_at = now();
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'school_id', p_school_id,
+    'message', 'Password admin sekolah berhasil direset'
+  );
+END;
+$$;
+
+-- RPC: Bersihkan Catatan Password Awal oleh Superadmin (initial_password = NULL)
+CREATE OR REPLACE FUNCTION public.superadmin_clear_school_password(
+  p_school_id UUID
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+BEGIN
+  IF public.get_my_role() <> 'superadmin' THEN
+    RAISE EXCEPTION 'Hanya Superadmin yang berhak membersihkan catatan password';
+  END IF;
+
+  UPDATE public.school_credentials
+  SET initial_password = NULL,
+      updated_at = now()
+  WHERE school_id = p_school_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'school_id', p_school_id,
+    'message', 'Catatan password berhasil dibersihkan'
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.register_school_and_admin TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.superadmin_reset_school_password TO authenticated;
+GRANT EXECUTE ON FUNCTION public.superadmin_clear_school_password TO authenticated;

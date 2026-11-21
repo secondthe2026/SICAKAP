@@ -255,6 +255,28 @@
             class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" />
         </div>
 
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Email Resmi Admin Sekolah</label>
+          <input type="email" id="add-school-email" required placeholder="admin@sdncontoh.sch.id"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" />
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="font-bold text-slate-700">Kata Sandi Akun Admin</label>
+            <button type="button" onclick="randomizeAddSchoolPassword()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
+              🎲 Acak Sandi
+            </button>
+          </div>
+          <div class="relative">
+            <input type="password" id="add-school-password" required minlength="6" placeholder="Minimal 6 karakter"
+              class="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500" />
+            <button type="button" onclick="toggleAddSchoolPasswordVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+              👁️
+            </button>
+          </div>
+        </div>
+
         <div class="flex items-center gap-2 pt-1">
           <input type="checkbox" id="add-school-active" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500" />
           <label for="add-school-active" class="text-xs font-bold text-slate-700">Langsung Aktifkan Akses Sekolah</label>
@@ -272,6 +294,105 @@
       </form>
     </div>
   </div>
+  <!-- ================= MODAL KREDENSIAL ADMIN SEKOLAH (SUPERADMIN ONLY) ================= -->
+  <div id="modal-school-credentials" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative border border-indigo-100 animate-in fade-in zoom-in-95 duration-200">
+      
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-slate-900" id="cred-modal-title">Kredensial Admin Sekolah</h3>
+            <p class="text-xs text-slate-500" id="cred-modal-subtitle">Akses akun pengelola sekolah pendaftar</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeSchoolCredentialsModal()" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Detail Kredensial Card -->
+      <div class="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-3.5 text-xs">
+        <div>
+          <span class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">Nama Institusi &amp; NPSN</span>
+          <p class="font-black text-sm text-slate-900" id="cred-school-name">-</p>
+          <p class="font-mono text-xs text-indigo-700 font-bold" id="cred-school-npsn">NPSN: -</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2.5 border-t border-indigo-100">
+          <div>
+            <span class="block text-[11px] font-bold text-slate-500 mb-1">Email / User Login Admin</span>
+            <div class="flex items-center gap-1.5">
+              <span class="font-mono font-bold text-slate-900 select-all truncate" id="cred-admin-email">-</span>
+              <button type="button" onclick="copyCredText('cred-admin-email', 'Email')" class="p-1 text-slate-400 hover:text-indigo-600 cursor-pointer" title="Salin Email">
+                📋
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <span class="block text-[11px] font-bold text-slate-500 mb-1">Kata Sandi Login</span>
+            <div class="flex items-center gap-1.5">
+              <span class="font-mono font-bold text-indigo-900 tracking-wider" id="cred-admin-password">••••••••</span>
+              <button type="button" onclick="toggleCredPasswordVisibility()" class="p-1 text-slate-400 hover:text-indigo-600 cursor-pointer" id="btn-toggle-cred-pwd" title="Lihat/Sembunyikan">
+                👁️
+              </button>
+              <button type="button" onclick="copyCredPassword()" class="p-1 text-slate-400 hover:text-indigo-600 cursor-pointer" title="Salin Password">
+                📋
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="cred-status-badge" class="pt-1">
+          <!-- Dynamic status badge -->
+        </div>
+      </div>
+
+      <!-- Tombol Aksi Utama -->
+      <div class="space-y-2.5 pt-1">
+        <!-- 1. Salin WhatsApp Ready Format -->
+        <button type="button" onclick="copyWhatsAppLoginInfo()" class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer">
+          <i data-lucide="message-square" class="w-4 h-4"></i>
+          <span>📲 Salin Info Login (Format WhatsApp Siap Kirim)</span>
+        </button>
+
+        <!-- 2. Form Reset Password Baru -->
+        <div class="border border-slate-200 rounded-2xl p-3.5 space-y-2 bg-slate-50">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+              <span>🔄 Reset Kata Sandi Admin Sekolah</span>
+            </label>
+            <button type="button" onclick="randomizeNewAdminPassword()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
+              🎲 Acak Sandi
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" id="input-reset-pwd" minlength="6" placeholder="Masukkan kata sandi baru (min 6 karakter)..." class="flex-1 px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <button type="button" onclick="submitResetAdminPassword()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 cursor-pointer transition shadow-2xs">
+              Reset Sandi
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-500">Memperbarui akun Supabase Auth dan menyimpan catatan password baru untuk dibagikan ke sekolah.</p>
+        </div>
+
+        <!-- 3. Hapus Catatan Password Plaintext -->
+        <div class="pt-1 flex items-center justify-between text-xs">
+          <button type="button" onclick="submitClearPasswordRecord()" class="text-rose-600 hover:text-rose-800 font-bold hover:underline flex items-center gap-1 cursor-pointer" title="Kosongkan initial_password demi keamanan">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Hapus Catatan Password (Set NULL)</span>
+          </button>
+          <button type="button" onclick="closeSchoolCredentialsModal()" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-100 cursor-pointer">
+            Tutup
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 
   </main>
 
@@ -286,7 +407,10 @@
     import { supabase, getCurrentUserProfile, signOutAndRedirect } from '/src/lib/supabase.js';
 
     let schoolsData = [];
+    let credentialsMap = {};
     let currentFilter = 'all';
+    let activeCredSchoolId = null;
+    let isCredPasswordMasked = true;
 
     // Show Toast Notification
     function showToast(msg) {
@@ -354,7 +478,7 @@
           `;
         }
 
-        // 1. Fetch all schools
+        // 1. Fetch all schools & school_credentials (RLS Superadmin only)
         const { data: schools, error: schoolsErr } = await supabase
           .from('schools')
           .select('*')
@@ -362,6 +486,21 @@
 
         if (schoolsErr) throw schoolsErr;
         schoolsData = schools || [];
+
+        try {
+          const { data: creds, error: credsErr } = await supabase
+            .from('school_credentials')
+            .select('*');
+
+          credentialsMap = {};
+          if (creds && !credsErr) {
+            creds.forEach(c => {
+              credentialsMap[c.school_id] = c;
+            });
+          }
+        } catch (credFetchErr) {
+          console.warn('[Superadmin] school_credentials fetch notice:', credFetchErr);
+        }
 
         // 2. Fetch student count from profiles
         const { count: studentCount, error: countErr } = await supabase
@@ -422,10 +561,14 @@
 
         const actionButtons = isApproved
           ? `
-            <div class="flex items-center justify-center gap-2">
-              <button onclick="toggleSchoolActive('${item.id}', true, '${item.name}')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
+            <div class="flex items-center justify-center gap-1.5">
+              <button onclick="openSchoolCredentialsModal('${item.id}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer" title="Kelola Kredensial Login Admin Sekolah">
+                <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                <span>Kredensial</span>
+              </button>
+              <button onclick="toggleSchoolActive('${item.id}', true, '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
                 <i data-lucide="pause-circle" class="w-3.5 h-3.5"></i>
-                <span>Nonaktifkan</span>
+                <span>Nonaktif</span>
               </button>
               <button onclick="deleteSchool('${item.id}', '${item.name}')" class="p-1.5 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Hapus Sekolah">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -433,12 +576,16 @@
             </div>
           `
           : `
-            <div class="flex items-center justify-center gap-2">
-              <button onclick="toggleSchoolActive('${item.id}', false, '${item.name}')" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer">
+            <div class="flex items-center justify-center gap-1.5">
+              <button onclick="openSchoolCredentialsModal('${item.id}')" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer" title="Lihat Kredensial Admin Sekolah">
+                <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                <span>Kredensial</span>
+              </button>
+              <button onclick="toggleSchoolActive('${item.id}', false, '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer">
                 <i data-lucide="check" class="w-3.5 h-3.5"></i>
                 <span>Setujui</span>
               </button>
-              <button onclick="deleteSchool('${item.id}', '${item.name}')" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
+              <button onclick="deleteSchool('${item.id}', '${item.name}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer">
                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
                 <span>Tolak</span>
               </button>
@@ -501,8 +648,14 @@
             <span class="truncate">${s.name}</span>
             <span class="text-emerald-600 shrink-0 text-xs">✓ Aktif</span>
           </div>
-          <p class="text-slate-500">NPSN: <span class="font-mono font-semibold">${s.npsn}</span> • Jenjang ${s.jenjang || 'SD'}</p>
-          <p class="text-[11px] text-slate-400 truncate">Wilayah: ${s.kabupaten || 'Nasional'}</p>
+          <p class="text-slate-500 text-xs">NPSN: <span class="font-mono font-semibold">${s.npsn}</span> • Jenjang ${s.jenjang || 'SD'}</p>
+          <div class="flex items-center justify-between pt-1 border-t border-slate-200/60">
+            <span class="text-[11px] text-slate-400 truncate">${s.kabupaten || 'Nasional'}</span>
+            <button onclick="openSchoolCredentialsModal('${s.id}')" class="px-2.5 py-1 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs">
+              <i data-lucide="key" class="w-3 h-3"></i>
+              <span>Kredensial</span>
+            </button>
+          </div>
         </div>
       `).join('');
     }
@@ -549,30 +702,102 @@
     }
 
     // Create New School (INSERT into public.schools)
+    function randomizeAddSchoolPassword() {
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      const el = document.getElementById('add-school-password');
+      if (el) {
+        el.type = 'text';
+        el.value = `AdminSD-${randomNum}`;
+      }
+    }
+
+    function toggleAddSchoolPasswordVisibility() {
+      const el = document.getElementById('add-school-password');
+      if (el) el.type = el.type === 'password' ? 'text' : 'password';
+    }
+
     async function handleCreateSchool(e) {
       e.preventDefault();
       const name = document.getElementById('add-school-name').value.trim();
       const npsn = document.getElementById('add-school-npsn').value.trim();
       const jenjang = document.getElementById('add-school-jenjang').value;
       const kabupaten = document.getElementById('add-school-kabupaten').value.trim();
+      const email = document.getElementById('add-school-email').value.trim();
+      const password = document.getElementById('add-school-password').value.trim();
       const isActive = document.getElementById('add-school-active').checked;
 
-      try {
-        const { error } = await supabase
-          .from('schools')
-          .insert([{ name, npsn, jenjang, kabupaten, is_active: isActive }]);
+      if (!password || password.length < 6) {
+        showToast('❌ Kata sandi minimal 6 karakter.');
+        return;
+      }
 
-        if (error) throw error;
+      showToast('⏳ Mendaftarkan sekolah & membuat akun admin...');
+
+      try {
+        let created = false;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token || '';
+
+        // 1. Coba melalui serverless API route
+        try {
+          const res = await fetch('/api/register-school', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              name,
+              npsn,
+              jenjang,
+              kabupaten,
+              admin_email: email,
+              password,
+              is_active: isActive
+            })
+          });
+          const json = await res.json();
+          if (res.ok && json.ok) {
+            created = true;
+          } else if (!res.ok && json.error) {
+            throw new Error(json.error);
+          }
+        } catch (apiErr) {
+          console.warn('[Superadmin] API route notice:', apiErr.message);
+        }
+
+        // 2. Fallback via RPC Supabase
+        if (!created) {
+          const { error: rpcErr } = await supabase.rpc('register_school_and_admin', {
+            p_name: name,
+            p_npsn: npsn,
+            p_jenjang: jenjang,
+            p_kabupaten: kabupaten,
+            p_admin_email: email,
+            p_password: password,
+            p_is_active: isActive
+          });
+
+          if (rpcErr) {
+            console.warn('[Superadmin] RPC error, fallback standard insert:', rpcErr);
+            const { error: insErr } = await supabase
+              .from('schools')
+              .insert([{ name, npsn, jenjang, kabupaten, is_active: isActive }]);
+            if (insErr) throw insErr;
+          }
+        }
 
         closeAddSchoolModal();
         document.getElementById('add-school-name').value = '';
         document.getElementById('add-school-npsn').value = '';
         document.getElementById('add-school-kabupaten').value = '';
+        document.getElementById('add-school-email').value = '';
+        document.getElementById('add-school-password').value = '';
 
-        showToast(`✅ Sekolah "${name}" (NPSN: ${npsn}) berhasil didaftarkan ke Supabase!`);
+        showToast(`✅ Sekolah "${name}" & Akun Admin berhasil didaftarkan!`);
         await loadSuperadminData();
       } catch (err) {
-        showToast(`❌ Gagal mendaftarkan sekolah: ${err.message}`);
+        showToast(`❌ Gagal mendaftarkan sekolah: ${err.message || 'Terjadi kesalahan'}`);
       }
     }
 
@@ -592,6 +817,234 @@
       renderSubmissionsTable();
     }
 
+
+    // ================= FITUR KREDENSIAL ADMIN SEKOLAH =================
+    function openSchoolCredentialsModal(schoolId) {
+      activeCredSchoolId = schoolId;
+      const school = schoolsData.find(s => s.id === schoolId);
+      if (!school) return;
+
+      const cred = credentialsMap[schoolId];
+      const adminEmail = cred?.admin_email || `admin.${school.npsn}@sicakap.sch.id`;
+      const initialPwd = cred?.initial_password || null;
+
+      document.getElementById('cred-modal-title').textContent = `Kredensial Admin: ${school.name}`;
+      document.getElementById('cred-modal-subtitle').textContent = `NPSN: ${school.npsn} • Status: ${school.is_active ? 'Disetujui (Aktif)' : 'Menunggu Approval'}`;
+      document.getElementById('cred-school-name').textContent = school.name;
+      document.getElementById('cred-school-npsn').textContent = `NPSN: ${school.npsn} • Jenjang: ${school.jenjang || 'SD'} • ${school.kabupaten || 'Nasional'}`;
+      document.getElementById('cred-admin-email').textContent = adminEmail;
+
+      const pwdEl = document.getElementById('cred-admin-password');
+      const badgeEl = document.getElementById('cred-status-badge');
+      const toggleBtn = document.getElementById('btn-toggle-cred-pwd');
+
+      isCredPasswordMasked = true;
+      if (toggleBtn) toggleBtn.textContent = '👁️';
+
+      if (initialPwd) {
+        pwdEl.textContent = '••••••••';
+        pwdEl.dataset.raw = initialPwd;
+        badgeEl.innerHTML = `
+          <div class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between text-[11px]">
+            <span>🔑 <strong>Password Awal Tersimpan:</strong> Siap dibagikan ke sekolah.</span>
+            <span class="px-2 py-0.5 rounded-full bg-amber-200/80 font-bold text-[10px]">Perlu Diamankan</span>
+          </div>
+        `;
+      } else {
+        pwdEl.textContent = '[Sudah Dibersihkan / Mandiri]';
+        pwdEl.dataset.raw = '';
+        badgeEl.innerHTML = `
+          <div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between text-[11px]">
+            <span>🛡️ <strong>Catatan Password Kosong:</strong> Lebih aman, password teks biasa tidak disimpan.</span>
+            <span class="px-2 py-0.5 rounded-full bg-emerald-200/80 font-bold text-[10px]">Aman</span>
+          </div>
+        `;
+      }
+
+      document.getElementById('input-reset-pwd').value = '';
+      const modal = document.getElementById('modal-school-credentials');
+      if (modal) modal.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeSchoolCredentialsModal() {
+      activeCredSchoolId = null;
+      const modal = document.getElementById('modal-school-credentials');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function toggleCredPasswordVisibility() {
+      const pwdEl = document.getElementById('cred-admin-password');
+      const toggleBtn = document.getElementById('btn-toggle-cred-pwd');
+      const raw = pwdEl?.dataset?.raw;
+
+      if (!raw) {
+        showToast('Password tidak tersimpan dalam bentuk teks biasa.');
+        return;
+      }
+
+      isCredPasswordMasked = !isCredPasswordMasked;
+      if (isCredPasswordMasked) {
+        pwdEl.textContent = '••••••••';
+        if (toggleBtn) toggleBtn.textContent = '👁️';
+      } else {
+        pwdEl.textContent = raw;
+        if (toggleBtn) toggleBtn.textContent = '🙈';
+      }
+    }
+
+    function copyCredText(elementId, label) {
+      const el = document.getElementById(elementId);
+      const text = el?.textContent || '';
+      if (!text || text === '-') return;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`✅ ${label} berhasil disalin ke clipboard!`);
+      });
+    }
+
+    function copyCredPassword() {
+      const pwdEl = document.getElementById('cred-admin-password');
+      const raw = pwdEl?.dataset?.raw;
+      if (!raw) {
+        showToast('Password kosong atau belum tersimpan.');
+        return;
+      }
+      navigator.clipboard.writeText(raw).then(() => {
+        showToast('✅ Password admin berhasil disalin!');
+      });
+    }
+
+    function copyWhatsAppLoginInfo() {
+      if (!activeCredSchoolId) return;
+      const school = schoolsData.find(s => s.id === activeCredSchoolId);
+      const cred = credentialsMap[activeCredSchoolId];
+      if (!school) return;
+
+      const adminEmail = cred?.admin_email || `admin.${school.npsn}@sicakap.sch.id`;
+      const pwd = cred?.initial_password || '(Gunakan password yang telah Anda buat atau minta reset ke Superadmin)';
+
+      const waText = `*KREDENSIAL LOGIN ADMIN SEKOLAH SI-CAKAP*\n` +
+        `Yth. Bapak/Ibu Pengelola ${school.name}\n\n` +
+        `Berikut adalah akses login akun Administrator Sekolah Anda di portal SI-CAKAP SD/MI:\n\n` +
+        `🏫 *Nama Sekolah:* ${school.name}\n` +
+        `🪪 *NPSN:* ${school.npsn}\n` +
+        `🌐 *Alamat Portal Login:* https://digitalpemula-sicakap.vercel.app\n` +
+        `📧 *Email Login Admin:* ${adminEmail}\n` +
+        `🔑 *Kata Sandi:* ${pwd}\n\n` +
+        `----------------------------------------\n` +
+        `_Catatan: Harap segera login, kelola rombel & guru kelas Anda, serta jaga kerahasiaan kata sandi ini._`;
+
+      navigator.clipboard.writeText(waText.replace(/\\n/g, '\n')).then(() => {
+        showToast('📲 Info login format WhatsApp berhasil disalin!');
+      });
+    }
+
+    function randomizeNewAdminPassword() {
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      const el = document.getElementById('input-reset-pwd');
+      if (el) el.value = `AdminSD-${randomNum}`;
+    }
+
+    async function submitResetAdminPassword() {
+      if (!activeCredSchoolId) return;
+      const school = schoolsData.find(s => s.id === activeCredSchoolId);
+      const newPwd = (document.getElementById('input-reset-pwd')?.value || '').trim();
+
+      if (!newPwd || newPwd.length < 6) {
+        showToast('❌ Kata sandi baru minimal 6 karakter.');
+        return;
+      }
+
+      showToast(`⏳ Mereset kata sandi admin ${school?.name || ''}...`);
+
+      try {
+        let success = false;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token || '';
+
+        // 1. Coba melalui serverless API
+        try {
+          const res = await fetch('/api/superadmin-reset-password', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              school_id: activeCredSchoolId,
+              new_password: newPwd
+            })
+          });
+          const json = await res.json();
+          if (res.ok && json.ok) {
+            success = true;
+          } else if (!res.ok && json.error) {
+            throw new Error(json.error);
+          }
+        } catch (apiErr) {
+          console.warn('[Reset] API route notice:', apiErr.message);
+        }
+
+        // 2. Fallback via RPC Supabase
+        if (!success) {
+          const { error: rpcErr } = await supabase.rpc('superadmin_reset_school_password', {
+            p_school_id: activeCredSchoolId,
+            p_new_password: newPwd
+          });
+          if (rpcErr) throw rpcErr;
+        }
+
+        showToast(`✅ Kata sandi admin berhasil direset menjadi "${newPwd}"!`);
+        await loadSuperadminData();
+        openSchoolCredentialsModal(activeCredSchoolId);
+      } catch (err) {
+        showToast(`❌ Gagal reset kata sandi: ${err.message || 'Terjadi kesalahan'}`);
+      }
+    }
+
+    async function submitClearPasswordRecord() {
+      if (!activeCredSchoolId) return;
+      if (!confirm('Apakah Anda yakin ingin menghapus catatan password teks biasa ini? Password login admin tetap aktif, hanya riwayat teks awal di Superadmin yang akan diset NULL demi keamanan.')) {
+        return;
+      }
+
+      showToast('⏳ Membersihkan catatan password...');
+
+      try {
+        let cleared = false;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token || '';
+
+        try {
+          const res = await fetch('/api/superadmin-clear-password', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ school_id: activeCredSchoolId })
+          });
+          const json = await res.json();
+          if (res.ok && json.ok) cleared = true;
+        } catch (apiErr) {
+          console.warn('[Clear] API route notice:', apiErr.message);
+        }
+
+        if (!cleared) {
+          const { error: rpcErr } = await supabase.rpc('superadmin_clear_school_password', {
+            p_school_id: activeCredSchoolId
+          });
+          if (rpcErr) throw rpcErr;
+        }
+
+        showToast('✅ Catatan password teks biasa berhasil diset NULL!');
+        await loadSuperadminData();
+        openSchoolCredentialsModal(activeCredSchoolId);
+      } catch (err) {
+        showToast(`❌ Gagal membersihkan catatan password: ${err.message || 'Terjadi kesalahan'}`);
+      }
+    }
+
     // Expose handlers to global window scope for inline onclick/onsubmit
     window.openAddSchoolModal = openAddSchoolModal;
     window.closeAddSchoolModal = closeAddSchoolModal;
@@ -600,6 +1053,17 @@
     window.deleteSchool = deleteSchool;
     window.filterApprovalTable = filterApprovalTable;
     window.loadSuperadminData = loadSuperadminData;
+    window.openSchoolCredentialsModal = openSchoolCredentialsModal;
+    window.closeSchoolCredentialsModal = closeSchoolCredentialsModal;
+    window.toggleCredPasswordVisibility = toggleCredPasswordVisibility;
+    window.copyCredText = copyCredText;
+    window.copyCredPassword = copyCredPassword;
+    window.copyWhatsAppLoginInfo = copyWhatsAppLoginInfo;
+    window.randomizeNewAdminPassword = randomizeNewAdminPassword;
+    window.submitResetAdminPassword = submitResetAdminPassword;
+    window.submitClearPasswordRecord = submitClearPasswordRecord;
+    window.randomizeAddSchoolPassword = randomizeAddSchoolPassword;
+    window.toggleAddSchoolPasswordVisibility = toggleAddSchoolPasswordVisibility;
 
     // Initialization on DOMContentLoaded
     window.addEventListener('DOMContentLoaded', async () => {
