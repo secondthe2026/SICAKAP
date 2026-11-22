@@ -487,16 +487,43 @@ CREATE POLICY "proktor_manage_sessions" ON public.exam_sessions
     AND public.get_my_role() = 'proktor'
   );
 
+DROP POLICY IF EXISTS "guru_manage_class_sessions" ON public.exam_sessions;
 CREATE POLICY "guru_manage_class_sessions" ON public.exam_sessions
   FOR ALL USING (
     school_id = public.get_my_school_id()
     AND public.get_my_role() = 'guru'
-    AND (kelas = public.get_my_kelas())
+    AND (
+      kelas IS NULL
+      OR public.get_my_kelas() IS NULL
+      OR TRIM(LOWER(kelas)) = TRIM(LOWER(public.get_my_kelas()))
+      OR regexp_replace(kelas, '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+      OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = exam_sessions.student_id
+          AND (
+            TRIM(LOWER(COALESCE(p.kelas, p.class_name))) = TRIM(LOWER(public.get_my_kelas()))
+            OR regexp_replace(COALESCE(p.kelas, p.class_name), '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+          )
+      )
+    )
   )
   WITH CHECK (
     school_id = public.get_my_school_id()
     AND public.get_my_role() = 'guru'
-    AND (kelas = public.get_my_kelas())
+    AND (
+      kelas IS NULL
+      OR public.get_my_kelas() IS NULL
+      OR TRIM(LOWER(kelas)) = TRIM(LOWER(public.get_my_kelas()))
+      OR regexp_replace(kelas, '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+      OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = exam_sessions.student_id
+          AND (
+            TRIM(LOWER(COALESCE(p.kelas, p.class_name))) = TRIM(LOWER(public.get_my_kelas()))
+            OR regexp_replace(COALESCE(p.kelas, p.class_name), '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+          )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "siswa_read_own_session" ON public.exam_sessions;
@@ -526,11 +553,25 @@ CREATE POLICY "admin_manage_results" ON public.exam_results
     AND public.get_my_role() = 'admin_sekolah'
   );
 
+DROP POLICY IF EXISTS "guru_manage_class_results" ON public.exam_results;
 CREATE POLICY "guru_manage_class_results" ON public.exam_results
   FOR ALL USING (
     school_id = public.get_my_school_id()
     AND public.get_my_role() = 'guru'
-    AND (kelas = public.get_my_kelas())
+    AND (
+      kelas IS NULL
+      OR public.get_my_kelas() IS NULL
+      OR TRIM(LOWER(kelas)) = TRIM(LOWER(public.get_my_kelas()))
+      OR regexp_replace(kelas, '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+      OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = exam_results.student_id
+          AND (
+            TRIM(LOWER(COALESCE(p.kelas, p.class_name))) = TRIM(LOWER(public.get_my_kelas()))
+            OR regexp_replace(COALESCE(p.kelas, p.class_name), '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+          )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "siswa_read_own_result" ON public.exam_results;
