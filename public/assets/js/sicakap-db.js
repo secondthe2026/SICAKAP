@@ -275,19 +275,19 @@
         }
 
         // 2. Fetch Guru
-        const { data: gurus } = await window.supabase
+        const { data: gurus, error: guruErr } = await window.supabase
           .from('profiles')
           .select('*')
           .eq('school_id', schoolId)
           .eq('role', 'guru')
           .order('full_name', { ascending: true });
 
-        if (Array.isArray(gurus)) {
+        if (!guruErr && Array.isArray(gurus)) {
           const mappedGuru = gurus.map(g => ({
             id: g.id,
             nama: g.full_name,
-            nip: g.identifier || '',
-            email: g.email || '',
+            nip: g.nip || g.identifier || '',
+            email: g.email || (g.identifier && g.identifier.includes('@') ? g.identifier : ''),
             mapel: g.subject || '',
             rombelWali: g.kelas || g.class_name || '',
             kelas: g.kelas || g.class_name || '',
@@ -703,22 +703,27 @@
       }
       this.saveGuru(list);
 
-      // Async write to Supabase
+      // Async write to Supabase if valid UUID
       if (typeof window !== 'undefined' && window.supabase) {
         const schoolId = this.getActiveSchoolId();
-        if (schoolId) {
+        if (schoolId && guru.id && !String(guru.id).startsWith('GUR-')) {
           this.setCloudSyncStatus('saving');
-          window.supabase.from('profiles').insert([{
+          const payload = {
+            id: guru.id,
             school_id: schoolId,
             role: 'guru',
             full_name: guru.nama,
-            identifier: guru.nip,
-            email: guru.email || null,
-            subject: guru.mapel || null,
-            kelas: guru.rombelWali || guru.kelas,
+            identifier: guru.nip || guru.email,
             class_name: guru.rombelWali || guru.kelas,
-            initial_password: guru.password
-          }]).then(({ error }) => {
+            kelas: guru.rombelWali || guru.kelas,
+            is_active: true
+          };
+          if (guru.email) payload.email = guru.email;
+          if (guru.nip) payload.nip = guru.nip;
+          if (guru.mapel) payload.subject = guru.mapel;
+          if (guru.password) payload.initial_password = guru.password;
+
+          window.supabase.from('profiles').upsert(payload, { onConflict: 'id' }).then(({ error }) => {
             if (error) console.warn('[SicakapDB] Supabase addGuru error:', error);
             this.setCloudSyncStatus('saved');
           });

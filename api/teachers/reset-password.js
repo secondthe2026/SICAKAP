@@ -26,7 +26,15 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Sesi tidak valid atau telah berakhir.' });
   }
 
-  const { data: callerProfile, error: profErr } = await client
+  if (!serviceRoleKey) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY belum diatur di server.' });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { data: callerProfile, error: profErr } = await adminClient
     .from('profiles')
     .select('id, role, school_id, is_active')
     .eq('id', user.id)
@@ -50,14 +58,6 @@ export default async function handler(req, res) {
   if (targetPassword.length < 6) {
     return res.status(400).json({ error: 'Kata sandi minimal 6 karakter.' });
   }
-
-  if (!serviceRoleKey) {
-    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY belum diatur di server.' });
-  }
-
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   try {
     const targetSchoolId = callerProfile.school_id;
@@ -166,9 +166,28 @@ export default async function handler(req, res) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: upsertErr } = await adminClient
+    let { error: upsertErr } = await adminClient
       .from('profiles')
       .upsert(profileUpdate, { onConflict: 'id' });
+
+    if (upsertErr && (upsertErr.message?.includes('column') || upsertErr.code === '42703')) {
+      console.warn('[API Reset Teacher Password] Column missing in profiles, retrying with core schema:', upsertErr.message);
+      const coreProfileUpdate = {
+        id: authUserId,
+        school_id: targetSchoolId,
+        role: 'guru',
+        full_name: nama || teacherProfile?.full_name || 'Guru SD',
+        identifier: nip || teacherProfile?.nip || authEmail,
+        kelas: rombelWali || teacherProfile?.kelas || '',
+        class_name: rombelWali || teacherProfile?.class_name || rombelWali || teacherProfile?.kelas || '',
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+      const retryResult = await adminClient
+        .from('profiles')
+        .upsert(coreProfileUpdate, { onConflict: 'id' });
+      upsertErr = retryResult.error;
+    }
 
     if (upsertErr) throw upsertErr;
 

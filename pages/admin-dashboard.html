@@ -402,11 +402,10 @@
               <input type="text" id="search-guru" oninput="renderGuruTable()" placeholder="Cari nama atau NIP guru..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-teal-600" />
             </div>
             <div class="flex items-center gap-2">
-              <button type="button" onclick="confirmClearAll('guru')" class="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer shrink-0">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                <span>Kosongkan Semua</span>
-              </button>
-              <p class="text-xs text-slate-500 font-bold hidden sm:block">Data tersinkron otomatis ke Supabase Cloud</p>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-xs font-bold">
+                <span class="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
+                <span>Terhubung ke Supabase Cloud</span>
+              </span>
             </div>
           </div>
 
@@ -1959,6 +1958,11 @@
     }
 
     function confirmClearAll(type) {
+      if (type === 'guru') {
+        alert('Demi keamanan sistem & akun login, pengosongan massal akun guru dinonaktifkan. Silakan hapus akun guru satu per satu bila diperlukan.');
+        return;
+      }
+
       const typeNames = {
         guru: 'Guru',
         rombel: 'Rombel',
@@ -2110,19 +2114,11 @@
           throw new Error(json.error || 'Gagal membuat akun guru di server.');
         }
 
-        const createdTeacher = json.teacher || {};
-
-        SicakapDB.addGuru({
-          id: createdTeacher.id || ('G-' + Date.now()),
-          nama: createdTeacher.nama || nama,
-          nip: createdTeacher.nip || nip,
-          email: createdTeacher.email || email,
-          mapel: createdTeacher.mapel || mapel,
-          rombelWali: createdTeacher.rombelWali || rombelWali,
-          kelas: createdTeacher.rombelWali || rombelWali,
-          class_name: createdTeacher.rombelWali || rombelWali,
-          password: createdTeacher.initial_password || password
-        });
+        // WAJIB FETCH ULANG LANGSUNG DARI SUPABASE (SINGLE SOURCE OF TRUTH - ANTI SIMPAN PALSU)
+        const schoolId = window.SicakapDB?.getActiveSchoolId();
+        if (schoolId && window.SicakapDB?.syncFromCloud) {
+          await window.SicakapDB.syncFromCloud(schoolId);
+        }
 
         closeModal('modal-add-guru');
         document.getElementById('guru-nama').value = '';
@@ -2189,7 +2185,11 @@
           throw new Error(json.error || 'Gagal mereset kata sandi guru');
         }
 
-        SicakapDB.updateGuru(id, { password: newPass.trim(), initial_password: newPass.trim() });
+        const schoolId = window.SicakapDB?.getActiveSchoolId();
+        if (schoolId && window.SicakapDB?.syncFromCloud) {
+          await window.SicakapDB.syncFromCloud(schoolId);
+        }
+
         initAdminData();
         showToast(`✅ ${json.message || `Password akun guru "${targetNama}" berhasil direset!`}`);
       } catch (err) {
@@ -2199,11 +2199,24 @@
       }
     }
 
-    function deleteGuru(id, nama) {
-      if (confirm(`Yakin ingin menghapus akun guru "${nama}"?`)) {
+    async function deleteGuru(id, nama) {
+      if (!confirm(`Yakin ingin menghapus akun guru "${nama}"? Akun dan profil guru akan dihapus permanen dari Supabase.`)) return;
+      try {
+        if (window.supabase) {
+          const { error } = await window.supabase.from('profiles').delete().eq('id', id);
+          if (error) throw error;
+        }
         SicakapDB.deleteGuru(id);
+        const schoolId = window.SicakapDB?.getActiveSchoolId();
+        if (schoolId && window.SicakapDB?.syncFromCloud) {
+          await window.SicakapDB.syncFromCloud(schoolId);
+        }
         initAdminData();
         showToast(`Akun guru "${nama}" telah dihapus!`);
+      } catch (err) {
+        console.error('[Admin] Gagal menghapus guru:', err);
+        showToast(`❌ Gagal menghapus guru: ${err.message}`);
+        alert(`Gagal menghapus guru: ${err.message}`);
       }
     }
 

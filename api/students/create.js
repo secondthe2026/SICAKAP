@@ -26,8 +26,16 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Sesi tidak valid atau telah berakhir. Silakan login kembali.' });
   }
 
-  // Ambil profil pemanggil dari database
-  const { data: callerProfile, error: profErr } = await client
+  if (!serviceRoleKey) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY belum diatur di server.' });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Ambil profil pemanggil dari database menggunakan adminClient
+  const { data: callerProfile, error: profErr } = await adminClient
     .from('profiles')
     .select('id, role, school_id, kelas, class_name, is_active')
     .eq('id', user.id)
@@ -50,14 +58,6 @@ export default async function handler(req, res) {
   if (!targetSchoolId) {
     return res.status(400).json({ error: 'School ID tidak ditemukan untuk akun ini.' });
   }
-
-  if (!serviceRoleKey) {
-    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY belum diatur di server.' });
-  }
-
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   // Helper pemrosesan 1 siswa
   async function processStudentItem(item) {

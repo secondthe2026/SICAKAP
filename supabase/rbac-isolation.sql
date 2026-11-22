@@ -1209,6 +1209,48 @@ BEGIN
             AND school_id = public.get_my_school_id()
           );
     END IF;
+
+    -- Pastikan RLS SELECT untuk admin_sekolah pada seluruh profil di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+          AND tablename = 'profiles' 
+          AND policyname = 'admin_sekolah_select_profiles'
+    ) THEN
+        CREATE POLICY "admin_sekolah_select_profiles" ON public.profiles
+          FOR SELECT USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'admin_sekolah'
+          );
+    END IF;
+
+    -- Pastikan RLS ALL untuk admin_sekolah mengelola profil di sekolahnya (non-superadmin)
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+          AND tablename = 'profiles' 
+          AND policyname = 'admin_sekolah_manage_profiles'
+    ) THEN
+        CREATE POLICY "admin_sekolah_manage_profiles" ON public.profiles
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'admin_sekolah'
+            AND role::text <> 'superadmin'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'admin_sekolah'
+            AND role::text <> 'superadmin'
+          );
+    END IF;
 END $$;
+
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS nip TEXT,
+ADD COLUMN IF NOT EXISTS subject TEXT,
+ADD COLUMN IF NOT EXISTS email TEXT,
+ADD COLUMN IF NOT EXISTS phone TEXT,
+ADD COLUMN IF NOT EXISTS initial_password TEXT;
+
 
 

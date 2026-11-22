@@ -26,15 +26,23 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Sesi tidak valid atau telah berakhir. Silakan login kembali.' });
   }
 
-  // Ambil profil caller dari database
-  const { data: callerProfile, error: profErr } = await client
+  if (!serviceRoleKey) {
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY belum diatur di server environment.' });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Ambil profil caller dari database menggunakan adminClient (aman dari pembatasan RLS anon)
+  const { data: callerProfile, error: profErr } = await adminClient
     .from('profiles')
     .select('id, role, school_id, is_active')
     .eq('id', user.id)
     .maybeSingle();
 
   if (profErr || !callerProfile) {
-    return res.status(403).json({ error: 'Profil administrator tidak ditemukan.' });
+    return res.status(403).json({ error: 'Profil administrator tidak ditemukan di database.' });
   }
 
   const callerRole = String(callerProfile.role || '').toLowerCase();
@@ -83,14 +91,6 @@ export default async function handler(req, res) {
   if (teacherPassword.length < 6) {
     return res.status(400).json({ error: 'Kata sandi minimal 6 karakter.' });
   }
-
-  if (!serviceRoleKey) {
-    return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY belum diatur di server.' });
-  }
-
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   try {
     let authUserId = null;
@@ -172,7 +172,7 @@ export default async function handler(req, res) {
       role: 'guru',
       full_name: String(nama).trim(),
       email: cleanEmail || authEmail,
-      identifier: cleanNip || authEmail,
+      identifier: cleanNip || cleanEmail || authEmail,
       nip: cleanNip || null,
       subject: (mapel || '').trim(),
       kelas: String(rombelWali).trim(),
@@ -182,12 +182,32 @@ export default async function handler(req, res) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: upsertErr } = await adminClient
+    let { error: upsertErr } = await adminClient
       .from('profiles')
       .upsert(profileData, { onConflict: 'id' });
 
+    // Fallback jika database Supabase belum menjalankan ALTER TABLE kolom spesifik
+    if (upsertErr && (upsertErr.message?.includes('column') || upsertErr.code === '42703')) {
+      console.warn('[API Create Teacher] Column missing in profiles, retrying with core columns:', upsertErr.message);
+      const coreProfileData = {
+        id: authUserId,
+        school_id: targetSchoolId,
+        role: 'guru',
+        full_name: String(nama).trim(),
+        identifier: cleanNip || cleanEmail || authEmail,
+        class_name: String(rombelWali).trim(),
+        kelas: String(rombelWali).trim(),
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+      const retryResult = await adminClient
+        .from('profiles')
+        .upsert(coreProfileData, { onConflict: 'id' });
+      upsertErr = retryResult.error;
+    }
+
     if (upsertErr) {
-      throw upsertErr;
+      throw new Error(`Gagal menyimpan data profil guru ke tabel profiles: ${upsertErr.message}`);
     }
 
     return res.status(200).json({
