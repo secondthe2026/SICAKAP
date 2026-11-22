@@ -28,3 +28,4 @@ CREATE POLICY "siswa_guru_update_exam_sessions" ON public.exam_sessions
   FOR UPDATE
   USING (true)
   WITH CHECK (true);
+
