@@ -126,15 +126,20 @@ Pastikan opsi A, B, C, D memiliki teks yang jelas, kunci_jawaban berupa salah sa
     }
   };
 
-  // 6. Eksekusi ke Gemini REST API dengan Fallback Model
-  const candidateModels = [
-    process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
-  ];
+  // 6. Eksekusi ke Gemini REST API dengan Fallback Model Otomatis
+  let requestedModel = process.env.GEMINI_MODEL;
+  if (!requestedModel || requestedModel === 'gemini-1.5-flash') {
+    requestedModel = 'gemini-2.5-flash';
+  }
+
+  const fallbackList = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+  
+  // Susun daftar model unik: model utama dulu, lalu sisa fallback
+  const candidateModels = Array.from(new Set([requestedModel, ...fallbackList]));
 
   let rawJsonText = null;
   let lastErr = null;
+  let usedModel = null;
 
   for (const model of candidateModels) {
     try {
@@ -159,20 +164,20 @@ Pastikan opsi A, B, C, D memiliki teks yang jelas, kunci_jawaban berupa salah sa
         const partText = candidate?.content?.parts?.[0]?.text;
         if (partText) {
           rawJsonText = partText;
+          usedModel = model;
           break; // Sukses!
         }
       } else {
         const errJson = await geminiRes.json().catch(() => ({}));
         lastErr = errJson.error?.message || `HTTP ${geminiRes.status} on model ${model}`;
-        console.warn(`[Gemini] Model ${model} returned error:`, lastErr);
-        // Jika 404 model not found, lanjut ke kandidat model berikutnya
-        if (geminiRes.status === 404) continue;
-        // Jika 400 atau 403 atau quota exceeded, simpan error
-        if (geminiRes.status === 403 || geminiRes.status === 429) break;
+        console.warn(`[Gemini] Model ${model} returned error:`, lastErr, '- Mencoba model fallback berikutnya...');
+        // Otomatis coba model berikutnya jika 404/not found atau error lainnya
+        continue;
       }
     } catch (e) {
       lastErr = e.message;
-      console.warn(`[Gemini] Network error on model ${model}:`, e);
+      console.warn(`[Gemini] Network error on model ${model}:`, e, '- Mencoba model fallback berikutnya...');
+      continue;
     }
   }
 
@@ -227,7 +232,7 @@ Pastikan opsi A, B, C, D memiliki teks yang jelas, kunci_jawaban berupa salah sa
     return res.status(200).json({
       ok: true,
       count: normalizedQuestions.length,
-      modelUsed: 'gemini',
+      modelUsed: usedModel || requestedModel || 'gemini-2.5-flash',
       questions: normalizedQuestions
     });
   } catch (parseErr) {
