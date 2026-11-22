@@ -2471,9 +2471,14 @@
 
       tbody.innerHTML = jadwals.map(j => {
         const rombel = rombels.find(r => r.id === j.rombelId);
-        const rombelName = rombel ? rombel.namaRombel : (j.rombelId || '-');
-        const isAktif = j.status === 'Aktif';
+        const rombelName = rombel ? rombel.namaRombel : (j.kelas || j.rombelId || '-');
+        const isAktif = (j.status === 'Aktif' || j.status === 'active' || j.is_active === true);
         const isChecked = selectedItems.jadwal.has(String(j.id));
+        const namaUlangan = j.namaUlangan || j.title || (j.mapel ? `Ulangan ${j.mapel}` : 'Ulangan SD');
+        const mapel = j.mapel || j.subject || 'Matematika SD';
+        const jamMulai = j.jamMulai || j.jam_mulai || '08:00';
+        const durasi = j.durasiMenit || j.durasi || 60;
+        const token = (j.token || j.token_code || '').toUpperCase();
 
         return `
           <tr class="hover:bg-slate-50 transition ${isChecked ? 'bg-rose-50/40' : ''}">
@@ -2481,8 +2486,8 @@
               <input type="checkbox" class="check-item-jadwal w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${j.id}" ${isChecked ? 'checked' : ''} onchange="onItemCheckChange('jadwal', '${j.id}', this.checked)">
             </td>
             <td class="py-3.5 px-4 sm:px-6">
-              <p class="font-black text-slate-900">${j.namaUlangan}</p>
-              <p class="text-[11px] text-slate-500 font-bold">${j.mapel}</p>
+              <p class="font-black text-slate-900">${namaUlangan}</p>
+              <p class="text-[11px] text-slate-500 font-bold">${mapel}</p>
             </td>
             <td class="py-3.5 px-4">
               <span class="px-2.5 py-0.5 rounded-full bg-slate-100 font-bold text-slate-800 text-[11px]">
@@ -2490,22 +2495,22 @@
               </span>
             </td>
             <td class="py-3.5 px-4">
-              <p class="font-bold text-slate-800">${j.tanggal} • ${j.jamMulai} WIB</p>
-              <p class="text-[11px] text-slate-400 font-semibold">Durasi: ${j.durasiMenit} Menit</p>
+              <p class="font-bold text-slate-800">${j.tanggal || '-'} • ${jamMulai} WIB</p>
+              <p class="text-[11px] text-slate-400 font-semibold">Durasi: ${durasi} Menit</p>
             </td>
             <td class="py-3.5 px-4 text-center font-mono font-black text-amber-700 bg-amber-50/50 rounded-xl">
-              ${j.token}
+              ${token}
             </td>
             <td class="py-3.5 px-4 text-center">
-              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black ${isAktif ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'}">
+              <button type="button" onclick="toggleAdminJadwalStatus('${j.id}')" class="px-2.5 py-1 rounded-full text-[11px] font-black transition cursor-pointer ${isAktif ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-300 hover:bg-slate-200'}" title="Klik untuk ${isAktif ? 'menonaktifkan' : 'mengaktifkan'} jadwal ini">
                 ${isAktif ? '🟢 Aktif' : '⚪ Nonaktif'}
-              </span>
+              </button>
             </td>
             <td class="py-3.5 px-4 text-center space-x-1">
               <button onclick="editJadwal('${j.id}')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition cursor-pointer" title="Edit Jadwal">
                 ✏️
               </button>
-              <button onclick="deleteJadwal('${j.id}', '${j.namaUlangan}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold transition cursor-pointer" title="Hapus Jadwal">
+              <button onclick="deleteJadwal('${j.id}', '${namaUlangan.replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold transition cursor-pointer" title="Hapus Jadwal">
                 🗑️
               </button>
             </td>
@@ -2515,6 +2520,22 @@
       updateBulkToolbar('jadwal');
       lucide.createIcons();
     }
+
+    async function toggleAdminJadwalStatus(id) {
+      if (!window.SicakapDB?.toggleJadwalStatus) return;
+      try {
+        const updated = await window.SicakapDB.toggleJadwalStatus(id);
+        if (updated) {
+          const statusText = (updated.status === 'Aktif' || updated.status === 'active') ? '🟢 Aktif' : '⚪ Nonaktif';
+          showToast(`Status jadwal "${updated.namaUlangan}" berhasil diubah ke ${statusText}!`);
+          renderJadwalTable();
+        }
+      } catch (err) {
+        console.error('[Admin Toggle Status] Error:', err);
+        showToast(`❌ Gagal mengubah status: ${err.message}`);
+      }
+    }
+    window.toggleAdminJadwalStatus = toggleAdminJadwalStatus;
 
     function openModalAddJadwal() {
       populateRombelDropdowns();
@@ -2534,7 +2555,7 @@
       document.getElementById('jadwal-token').value = SicakapDB.generateToken();
     }
 
-    function handleSaveJadwal(e) {
+    async function handleSaveJadwal(e) {
       e.preventDefault();
       const editId = document.getElementById('jadwal-edit-id').value;
       const namaUlangan = document.getElementById('jadwal-nama').value.trim();
@@ -2546,32 +2567,63 @@
       const token = document.getElementById('jadwal-token').value.trim().toUpperCase();
       const status = document.getElementById('jadwal-status').value;
 
-      if (editId) {
-        SicakapDB.updateJadwal(editId, { namaUlangan, mapel, rombelId, tanggal, jamMulai, durasiMenit, token, status });
-        showToast(`Jadwal "${namaUlangan}" berhasil diperbarui!`);
-      } else {
-        SicakapDB.addJadwal({ namaUlangan, mapel, rombelId, tanggal, jamMulai, durasiMenit, token, status });
-        showToast(`Jadwal ulangan baru "${namaUlangan}" berhasil dibuat!`);
-      }
+      try {
+        const payload = {
+          namaUlangan,
+          title: namaUlangan,
+          mapel,
+          subject: mapel,
+          rombelId,
+          kelas: rombelId,
+          tanggal,
+          jamMulai,
+          durasiMenit,
+          durasi: durasiMenit,
+          duration_minutes: durasiMenit,
+          token,
+          token_code: token,
+          status,
+          is_active: status === 'Aktif'
+        };
 
-      closeModal('modal-add-jadwal');
-      document.getElementById('jadwal-edit-id').value = '';
-      document.getElementById('jadwal-nama').value = '';
-      initAdminData();
+        if (editId) {
+          SicakapDB.updateJadwal(editId, payload);
+          showToast(`Jadwal "${namaUlangan}" berhasil diperbarui!`);
+        } else {
+          SicakapDB.addJadwal(payload);
+          showToast(`Jadwal ulangan baru "${namaUlangan}" berhasil dibuat!`);
+        }
+
+        const schoolId = window.SicakapDB?.getActiveSchoolId();
+        if (schoolId && window.SicakapDB?.syncFromCloud) {
+          await window.SicakapDB.syncFromCloud(schoolId);
+        }
+
+        closeModal('modal-add-jadwal');
+        document.getElementById('jadwal-edit-id').value = '';
+        document.getElementById('jadwal-nama').value = '';
+        initAdminData();
+      } catch (err) {
+        console.error('[Admin Jadwal] Error:', err);
+        showToast(`❌ Gagal menyimpan jadwal: ${err.message}`);
+        alert(`Gagal menyimpan jadwal: ${err.message}`);
+      }
     }
 
     function editJadwal(id) {
-      const jadwal = SicakapDB.getJadwal().find(j => j.id === id);
+      const jadwal = SicakapDB.getJadwal().find(j => String(j.id) === String(id));
       if (!jadwal) return;
       document.getElementById('jadwal-edit-id').value = jadwal.id;
-      document.getElementById('jadwal-nama').value = jadwal.namaUlangan;
-      document.getElementById('jadwal-mapel').value = jadwal.mapel;
-      document.getElementById('jadwal-rombel').value = jadwal.rombelId;
-      document.getElementById('jadwal-tanggal').value = jadwal.tanggal;
-      document.getElementById('jadwal-jam').value = jadwal.jamMulai;
-      document.getElementById('jadwal-durasi').value = jadwal.durasiMenit;
-      document.getElementById('jadwal-token').value = jadwal.token;
-      document.getElementById('jadwal-status').value = jadwal.status;
+      document.getElementById('jadwal-nama').value = jadwal.namaUlangan || jadwal.title || '';
+      document.getElementById('jadwal-mapel').value = jadwal.mapel || jadwal.subject || 'Matematika SD';
+      if (document.getElementById('jadwal-rombel')) {
+        document.getElementById('jadwal-rombel').value = jadwal.rombelId || jadwal.kelas || '';
+      }
+      document.getElementById('jadwal-tanggal').value = jadwal.tanggal || new Date().toISOString().slice(0, 10);
+      document.getElementById('jadwal-jam').value = jadwal.jamMulai || jadwal.jam_mulai || '08:00';
+      document.getElementById('jadwal-durasi').value = jadwal.durasiMenit || jadwal.durasi || 60;
+      document.getElementById('jadwal-token').value = (jadwal.token || jadwal.token_code || '').toUpperCase();
+      document.getElementById('jadwal-status').value = (jadwal.status === 'Aktif' || jadwal.status === 'active' || jadwal.is_active === true) ? 'Aktif' : 'Nonaktif';
       document.getElementById('modal-jadwal-title').textContent = 'Edit Jadwal Ulangan SD';
       openModal('modal-add-jadwal');
     }

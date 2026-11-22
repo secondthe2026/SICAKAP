@@ -213,8 +213,22 @@ export const DataStore = {
   async createExam(examData) {
     const userRole = this.getActiveUserRole();
     const userKelas = this.getActiveUserKelas();
+    const title = (examData.title || examData.namaUlangan || (examData.subject ? `Ulangan ${examData.subject}` : 'Ulangan SD')).trim();
+    const subject = (examData.subject || examData.mapel || 'Matematika SD').trim();
+    const kelas = (examData.kelas || examData.rombelId || userKelas || 'Kelas 5').trim();
+    const dur = Number(examData.duration_minutes || examData.durasiMenit || examData.durasi) || 60;
+    const token = (examData.token_code || examData.token || '').trim().toUpperCase();
+    const isAktif = (examData.status === 'Aktif' || examData.status === 'active' || examData.is_active === true);
+
     const payload = {
       ...examData,
+      title,
+      subject,
+      kelas,
+      grade_level: kelas,
+      duration_minutes: dur,
+      token_code: token,
+      status: isAktif ? 'active' : 'draft',
       school_id: examData.school_id || this.getActiveSchoolId(),
     };
 
@@ -234,9 +248,16 @@ export const DataStore = {
   },
 
   async updateExam(examId, updates) {
+    const patch = { ...updates };
+    if (updates.namaUlangan && !updates.title) patch.title = updates.namaUlangan;
+    if (updates.mapel && !updates.subject) patch.subject = updates.mapel;
+    if (updates.durasiMenit || updates.durasi) patch.duration_minutes = Number(updates.durasiMenit || updates.durasi);
+    if (updates.token) patch.token_code = updates.token.toUpperCase();
+    if (updates.status) patch.status = (updates.status === 'Aktif' || updates.status === 'active') ? 'active' : 'draft';
+
     const { data, error } = await supabase
       .from('exams')
-      .update(updates)
+      .update(patch)
       .eq('id', examId)
       .select()
       .single();

@@ -3295,8 +3295,13 @@
       tbody.innerHTML = filtered.map(j => {
         const rombel = rombels.find(r => r.id === j.rombelId);
         const rombelName = rombel ? rombel.namaRombel : (j.kelas || j.rombelId || activeKelas);
-        const isAktif = j.status === 'Aktif';
+        const isAktif = (j.status === 'Aktif' || j.status === 'active' || j.is_active === true);
         const isChecked = selectedGuruItems.jadwal.has(String(j.id));
+        const namaUlangan = j.namaUlangan || j.title || (j.mapel ? `Ulangan ${j.mapel}` : 'Ulangan SD');
+        const mapel = j.mapel || j.subject || 'Matematika SD';
+        const jamMulai = j.jamMulai || j.jam_mulai || '08:00';
+        const durasi = j.durasiMenit || j.durasi || 60;
+        const token = (j.token || j.token_code || '').toUpperCase();
 
         return `
           <tr class="hover:bg-slate-50 transition ${isChecked ? 'bg-rose-50/40' : ''}">
@@ -3304,8 +3309,8 @@
               <input type="checkbox" class="check-item-guru-jadwal w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer" value="${j.id}" ${isChecked ? 'checked' : ''} onchange="onGuruItemCheckChange('jadwal', '${j.id}', this.checked)">
             </td>
             <td class="py-3.5 px-4 sm:px-6">
-              <p class="font-black text-slate-900">${j.namaUlangan}</p>
-              <p class="text-[11px] text-slate-500 font-bold">${j.mapel}</p>
+              <p class="font-black text-slate-900">${namaUlangan}</p>
+              <p class="text-[11px] text-slate-500 font-bold">${mapel}</p>
             </td>
             <td class="py-3.5 px-4">
               <span class="px-2.5 py-0.5 rounded-full bg-slate-100 font-bold text-slate-800 text-[11px]">
@@ -3313,22 +3318,22 @@
               </span>
             </td>
             <td class="py-3.5 px-4">
-              <p class="font-bold text-slate-800">${j.tanggal} • ${j.jamMulai} WIB</p>
-              <p class="text-[11px] text-slate-400 font-semibold">Durasi: ${j.durasiMenit} Menit</p>
+              <p class="font-bold text-slate-800">${j.tanggal || '-'} • ${jamMulai} WIB</p>
+              <p class="text-[11px] text-slate-400 font-semibold">Durasi: ${durasi} Menit</p>
             </td>
             <td class="py-3.5 px-4 text-center font-mono font-black text-amber-700 bg-amber-50/50 rounded-xl">
-              ${j.token}
+              ${token}
             </td>
             <td class="py-3.5 px-4 text-center">
-              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black ${isAktif ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'}">
+              <button type="button" onclick="toggleGuruJadwalStatus('${j.id}')" class="px-2.5 py-1 rounded-full text-[11px] font-black transition cursor-pointer ${isAktif ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-300 hover:bg-slate-200'}" title="Klik untuk ${isAktif ? 'menonaktifkan' : 'mengaktifkan'} jadwal ini">
                 ${isAktif ? '🟢 Aktif' : '⚪ Nonaktif'}
-              </span>
+              </button>
             </td>
             <td class="py-3.5 px-4 text-center space-x-1">
               <button onclick="editGuruJadwal('${j.id}')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition cursor-pointer" title="Edit Jadwal">
                 ✏️
               </button>
-              <button onclick="deleteGuruJadwal('${j.id}', '${j.namaUlangan}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold transition cursor-pointer" title="Hapus Jadwal">
+              <button onclick="deleteGuruJadwal('${j.id}', '${namaUlangan.replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold transition cursor-pointer" title="Hapus Jadwal">
                 🗑️
               </button>
             </td>
@@ -3338,6 +3343,22 @@
       updateGuruBulkToolbar('jadwal');
       lucide.createIcons();
     }
+
+    async function toggleGuruJadwalStatus(id) {
+      if (!window.SicakapDB?.toggleJadwalStatus) return;
+      try {
+        const updated = await window.SicakapDB.toggleJadwalStatus(id);
+        if (updated) {
+          const statusText = (updated.status === 'Aktif' || updated.status === 'active') ? '🟢 Aktif' : '⚪ Nonaktif';
+          showToast(`Status jadwal "${updated.namaUlangan}" berhasil diubah ke ${statusText}!`);
+          renderGuruJadwalTable();
+        }
+      } catch (err) {
+        console.error('[Guru Toggle Status] Error:', err);
+        showToast(`❌ Gagal mengubah status: ${err.message}`);
+      }
+    }
+    window.toggleGuruJadwalStatus = toggleGuruJadwalStatus;
 
     function openModalTambahJadwal() {
       document.getElementById('guru-jadwal-edit-id').value = '';
@@ -3353,17 +3374,19 @@
     }
 
     function editGuruJadwal(id) {
-      const jadwal = SicakapDB.getJadwal().find(j => j.id === id);
+      const jadwal = SicakapDB.getJadwal().find(j => String(j.id) === String(id));
       if (!jadwal) return;
       document.getElementById('guru-jadwal-edit-id').value = jadwal.id;
-      document.getElementById('guru-jadwal-nama').value = jadwal.namaUlangan;
-      document.getElementById('guru-jadwal-mapel').value = jadwal.mapel;
-      document.getElementById('guru-jadwal-rombel').value = jadwal.rombelId;
-      document.getElementById('guru-jadwal-tanggal').value = jadwal.tanggal;
-      document.getElementById('guru-jadwal-jam').value = jadwal.jamMulai;
-      document.getElementById('guru-jadwal-durasi').value = jadwal.durasiMenit;
-      document.getElementById('guru-jadwal-token').value = jadwal.token;
-      document.getElementById('guru-jadwal-status').value = jadwal.status;
+      document.getElementById('guru-jadwal-nama').value = jadwal.namaUlangan || jadwal.title || '';
+      document.getElementById('guru-jadwal-mapel').value = jadwal.mapel || jadwal.subject || 'Matematika SD';
+      if (document.getElementById('guru-jadwal-rombel')) {
+        document.getElementById('guru-jadwal-rombel').value = jadwal.rombelId || jadwal.kelas || '';
+      }
+      document.getElementById('guru-jadwal-tanggal').value = jadwal.tanggal || new Date().toISOString().slice(0, 10);
+      document.getElementById('guru-jadwal-jam').value = jadwal.jamMulai || jadwal.jam_mulai || '08:00';
+      document.getElementById('guru-jadwal-durasi').value = jadwal.durasiMenit || jadwal.durasi || 60;
+      document.getElementById('guru-jadwal-token').value = (jadwal.token || jadwal.token_code || '').toUpperCase();
+      document.getElementById('guru-jadwal-status').value = (jadwal.status === 'Aktif' || jadwal.status === 'active' || jadwal.is_active === true) ? 'Aktif' : 'Nonaktif';
       document.getElementById('modal-guru-jadwal-title').textContent = 'Edit Jadwal Ulangan SD';
       openModal('modal-guru-jadwal');
     }
@@ -3386,11 +3409,29 @@
       const status = document.getElementById('guru-jadwal-status').value;
 
       try {
+        const payload = {
+          namaUlangan,
+          title: namaUlangan,
+          mapel,
+          subject: mapel,
+          rombelId,
+          kelas: activeKelas,
+          tanggal,
+          jamMulai,
+          durasiMenit,
+          durasi: durasiMenit,
+          duration_minutes: durasiMenit,
+          token,
+          token_code: token,
+          status,
+          is_active: status === 'Aktif'
+        };
+
         if (editId) {
-          SicakapDB.updateJadwal(editId, { namaUlangan, mapel, rombelId, kelas: activeKelas, tanggal, jamMulai, durasiMenit, token, status });
+          SicakapDB.updateJadwal(editId, payload);
           showToast(`Jadwal "${namaUlangan}" (${activeKelas}) berhasil diperbarui!`);
         } else {
-          SicakapDB.addJadwal({ namaUlangan, mapel, rombelId, kelas: activeKelas, tanggal, jamMulai, durasiMenit, token, status });
+          SicakapDB.addJadwal(payload);
           showToast(`Jadwal ulangan baru "${namaUlangan}" (${activeKelas}) berhasil ditambahkan!`);
         }
 
@@ -3400,6 +3441,7 @@
         }
 
         closeModal('modal-guru-jadwal');
+        renderGuruJadwalTable();
         initGuruData();
       } catch (err) {
         console.error('[Guru Jadwal] Error:', err);

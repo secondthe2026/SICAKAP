@@ -345,16 +345,7 @@
           .order('created_at', { ascending: false });
 
         if (Array.isArray(exams)) {
-          const mappedJadwal = exams.map(e => ({
-            id: e.id,
-            mapel: e.subject || e.title,
-            rombelId: e.kelas || e.grade_level || '',
-            kelas: e.kelas || e.grade_level || '',
-            token: e.token_code || '',
-            durasi: e.duration_minutes || 60,
-            status: e.status === 'published' ? 'Aktif' : 'Draft',
-            tanggal: e.starts_at ? e.starts_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
-          }));
+          const mappedJadwal = exams.map(e => this.mapExamFromDb(e));
           this.write(KEYS.JADWAL, mappedJadwal, true);
         }
 
@@ -1004,71 +995,208 @@
     // ==========================================
     // 5. JADWAL ULANGAN SD (ADMIN & GURU)
     // ==========================================
+    // Centralized 2-Way Mapper: Supabase <-> SicakapDB UI
+    mapExamFromDb: function (e) {
+      if (!e) return null;
+      let tanggal = new Date().toISOString().slice(0, 10);
+      let jamMulai = '08:00';
+      if (e.starts_at) {
+        try {
+          const d = new Date(e.starts_at);
+          if (!isNaN(d.getTime())) {
+            tanggal = d.toISOString().slice(0, 10);
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            jamMulai = `${hours}:${minutes}`;
+            if (jamMulai === '00:00' && typeof e.starts_at === 'string' && e.starts_at.includes('T')) {
+              const timePart = e.starts_at.split('T')[1]?.slice(0, 5);
+              if (timePart && timePart !== '00:00') jamMulai = timePart;
+            }
+          }
+        } catch (err) {}
+      } else if (e.tanggal) {
+        tanggal = e.tanggal;
+        jamMulai = e.jam_mulai || e.jamMulai || '08:00';
+      }
+      if (e.jam_mulai) jamMulai = e.jam_mulai;
+      if (e.jamMulai) jamMulai = e.jamMulai;
+
+      const dur = Number(e.duration_minutes || e.durasiMenit || e.durasi) || 60;
+      const isStatusActive = (
+        e.status === 'active' ||
+        e.status === 'Aktif' ||
+        e.status === 'published' ||
+        e.is_active === true
+      );
+
+      const nama = e.title || e.nama_ulangan || e.namaUlangan || (e.subject ? `Ulangan ${e.subject}` : 'Ulangan Harian SD');
+      const subject = e.subject || e.mapel || 'Matematika SD';
+      const rombel = e.kelas || e.grade_level || e.rombelId || 'Kelas 5';
+      const token = (e.token_code || e.token || '').toUpperCase();
+
+      return {
+        id: e.id,
+        namaUlangan: nama,
+        title: nama,
+        mapel: subject,
+        subject: subject,
+        rombelId: rombel,
+        kelas: rombel,
+        grade_level: String(e.grade_level || rombel),
+        tanggal: tanggal,
+        jamMulai: jamMulai,
+        durasiMenit: dur,
+        durasi: dur,
+        duration_minutes: dur,
+        token: token,
+        token_code: token,
+        status: isStatusActive ? 'Aktif' : 'Nonaktif',
+        is_active: isStatusActive,
+        updatedAt: e.updated_at ? e.updated_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      };
+    },
+
+    mapExamToDb: function (j, schoolId) {
+      if (!j) return null;
+      const isAktif = (j.status === 'Aktif' || j.status === 'active' || j.is_active === true);
+      const tanggal = j.tanggal || new Date().toISOString().slice(0, 10);
+      const jamMulai = j.jamMulai || j.jam_mulai || '08:00';
+      const dur = Number(j.durasiMenit || j.durasi || j.duration_minutes) || 60;
+      const title = (j.namaUlangan || j.title || (j.mapel ? `Ulangan ${j.mapel}` : 'Ulangan Harian SD')).trim();
+      const subject = (j.mapel || j.subject || 'Matematika SD').trim();
+      const kelas = (j.kelas || j.rombelId || 'Kelas 5').trim();
+      const token = (j.token || j.token_code || this.generateToken()).trim().toUpperCase();
+
+      let startsAtIso;
+      try {
+        const dt = new Date(`${tanggal}T${jamMulai}:00`);
+        startsAtIso = !isNaN(dt.getTime()) ? dt.toISOString() : new Date().toISOString();
+      } catch (e) {
+        startsAtIso = new Date().toISOString();
+      }
+
+      const endsAtIso = new Date(new Date(startsAtIso).getTime() + dur * 60 * 1000).toISOString();
+
+      const payload = {
+        title: title,
+        subject: subject,
+        kelas: kelas,
+        grade_level: kelas,
+        duration_minutes: dur,
+        token_code: token,
+        status: isAktif ? 'active' : 'draft',
+        starts_at: startsAtIso,
+        ends_at: endsAtIso,
+        updated_at: new Date().toISOString()
+      };
+
+      if (schoolId) {
+        payload.school_id = schoolId;
+      }
+      if (j.id && !String(j.id).startsWith('JDW-')) {
+        payload.id = j.id;
+      }
+
+      return payload;
+    },
+
     getJadwal: function () {
       this.init();
-      return this.read(KEYS.JADWAL, SEED_DATA.jadwal);
+      const raw = this.read(KEYS.JADWAL, SEED_DATA.jadwal);
+      return Array.isArray(raw) ? raw.map(j => this.mapExamFromDb(j)) : [];
     },
     getJadwalByToken: function (token) {
       const clean = String(token || '').trim().toUpperCase();
-      return this.getJadwal().find(j => j.token.toUpperCase() === clean) || null;
+      return this.getJadwal().find(j => {
+        const t = (j.token || j.token_code || '').toUpperCase();
+        return t === clean;
+      }) || null;
     },
     saveJadwal: function (list) {
       this.write(KEYS.JADWAL, list);
     },
     addJadwal: function (jadwal) {
       const list = this.getJadwal();
-      if (!jadwal.id) jadwal.id = 'JDW-' + String(list.length + 1).padStart(2, '0');
-      if (!jadwal.token) jadwal.token = this.generateToken();
-      if (!jadwal.status) jadwal.status = 'Aktif';
-      jadwal.updatedAt = new Date().toISOString().slice(0, 10);
-      list.push(jadwal);
+      const schoolId = this.getActiveSchoolId();
+      const mappedPayload = this.mapExamToDb(jadwal, schoolId);
+
+      const normalized = this.mapExamFromDb({
+        id: jadwal.id || ('JDW-' + Date.now()),
+        ...jadwal,
+        ...mappedPayload
+      });
+
+      list.push(normalized);
       this.saveJadwal(list);
 
-      if (typeof window !== 'undefined' && window.supabase) {
-        const schoolId = this.getActiveSchoolId();
-        if (schoolId) {
-          this.setCloudSyncStatus('saving');
-          window.supabase.from('exams').insert([{
-            school_id: schoolId,
-            title: `Ujian ${jadwal.mapel} ${jadwal.kelas || jadwal.rombelId || ''}`.trim(),
-            subject: jadwal.mapel,
-            kelas: jadwal.kelas || jadwal.rombelId || 'Kelas 5',
-            grade_level: jadwal.kelas || jadwal.rombelId || '5',
-            duration_minutes: Number(jadwal.durasi) || 60,
-            token_code: jadwal.token,
-            status: (jadwal.status === 'Aktif' || jadwal.status === 'active') ? 'active' : 'draft',
-            starts_at: jadwal.tanggal ? new Date(jadwal.tanggal).toISOString() : new Date().toISOString()
-          }]).then(({ error }) => {
-            if (error) console.warn('[SicakapDB] Supabase addJadwal error:', error);
-            this.setCloudSyncStatus('saved');
-          });
-        }
+      if (typeof window !== 'undefined' && window.supabase && schoolId) {
+        this.setCloudSyncStatus('saving');
+        window.supabase.from('exams').insert([mappedPayload]).select().single().then(({ data, error }) => {
+          if (error) {
+            console.warn('[SicakapDB] Supabase addJadwal error:', error);
+          } else if (data) {
+            const cloudMapped = this.mapExamFromDb(data);
+            const curList = this.getJadwal();
+            const idx = curList.findIndex(j => j.id === normalized.id);
+            if (idx !== -1) {
+              curList[idx] = cloudMapped;
+              this.saveJadwal(curList);
+            }
+          }
+          this.setCloudSyncStatus('saved');
+        });
       }
-      return jadwal;
+      return normalized;
     },
     updateJadwal: function (id, updatedFields) {
       const list = this.getJadwal();
-      const idx = list.findIndex(j => j.id === id);
+      const idx = list.findIndex(j => String(j.id) === String(id));
       if (idx !== -1) {
-        list[idx] = { ...list[idx], ...updatedFields, updatedAt: new Date().toISOString().slice(0, 10) };
+        const merged = { ...list[idx], ...updatedFields, updatedAt: new Date().toISOString().slice(0, 10) };
+        const normalized = this.mapExamFromDb(merged);
+        list[idx] = normalized;
+        this.saveJadwal(list);
+
+        if (typeof window !== 'undefined' && window.supabase) {
+          const schoolId = this.getActiveSchoolId();
+          const patch = this.mapExamToDb(normalized, schoolId);
+          delete patch.id;
+          delete patch.school_id;
+
+          this.setCloudSyncStatus('saving');
+          window.supabase.from('exams').update(patch).eq('id', id).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase updateJadwal error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+        return list[idx];
+      }
+      return null;
+    },
+    toggleJadwalStatus: async function (id) {
+      const list = this.getJadwal();
+      const idx = list.findIndex(j => String(j.id) === String(id));
+      if (idx !== -1) {
+        const currentStatus = list[idx].status;
+        const newStatus = (currentStatus === 'Aktif' || currentStatus === 'active') ? 'Nonaktif' : 'Aktif';
+        const isAktif = (newStatus === 'Aktif');
+
+        list[idx].status = newStatus;
+        list[idx].is_active = isAktif;
+        list[idx].updatedAt = new Date().toISOString().slice(0, 10);
         this.saveJadwal(list);
 
         if (typeof window !== 'undefined' && window.supabase) {
           this.setCloudSyncStatus('saving');
-          const patch = {};
-          if (updatedFields.mapel) patch.subject = updatedFields.mapel;
-          if (updatedFields.kelas || updatedFields.rombelId) {
-            patch.kelas = updatedFields.kelas || updatedFields.rombelId;
-            patch.grade_level = updatedFields.kelas || updatedFields.rombelId;
+          const patch = {
+            status: isAktif ? 'active' : 'draft',
+            updated_at: new Date().toISOString()
+          };
+          const { error } = await window.supabase.from('exams').update(patch).eq('id', id);
+          if (error) {
+            console.warn('[SicakapDB] Supabase toggleJadwalStatus error:', error);
           }
-          if (updatedFields.durasi) patch.duration_minutes = Number(updatedFields.durasi);
-          if (updatedFields.token) patch.token_code = updatedFields.token;
-          if (updatedFields.status) patch.status = (updatedFields.status === 'Aktif' || updatedFields.status === 'active') ? 'active' : 'draft';
-          patch.updated_at = new Date().toISOString();
-
-          window.supabase.from('exams').update(patch).eq('id', id).then(() => {
-            this.setCloudSyncStatus('saved');
-          });
+          this.setCloudSyncStatus('saved');
         }
         return list[idx];
       }

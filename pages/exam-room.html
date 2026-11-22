@@ -754,7 +754,7 @@
     };
 
     // Quick select schedule in lobby
-    window.selectExamSchedule = (token, title, duration) => {
+    window.selectExamSchedule = (token, title, duration, examId) => {
       const tokenInput = document.getElementById('input-token-code');
       if (tokenInput) tokenInput.value = token;
       const modTitle = document.getElementById('token-modal-exam-title');
@@ -764,6 +764,7 @@
       sessionStorage.setItem('sicakap_token', token);
       sessionStorage.setItem('sicakap_mapel', title);
       sessionStorage.setItem('sicakap_durasi', duration);
+      if (examId) sessionStorage.setItem('sicakap_exam_id', examId);
     };
 
     // ================= 8. PRINT RECEIPT BUTTON =================
@@ -841,21 +842,35 @@
       const scheduleCardsEl = document.getElementById('lobby-schedule-cards');
       if (scheduleCardsEl && window.SicakapDB) {
         const jadwals = window.SicakapDB.getJadwal ? window.SicakapDB.getJadwal() : [];
-        const activeJadwals = jadwals.filter(j => j.status === 'Aktif' || !j.status);
+        const activeJadwals = jadwals.filter(j => j.status === 'Aktif' || j.status === 'active' || j.is_active === true);
         if (activeJadwals.length > 0) {
-          scheduleCardsEl.innerHTML = activeJadwals.map(j => `
-            <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 hover:border-sky-300 transition text-left space-y-1 cursor-pointer active:scale-98" onclick="selectExamSchedule('${j.token || 'CKP26A'}', '${j.namaUlangan || j.mapel || 'Asesmen CBT SD'}', '${j.durasiMenit || 60}')">
-              <div class="flex items-center justify-between">
-                <span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">Aktif</span>
-                <span class="text-[10px] font-mono text-slate-500">${j.durasiMenit || 60} Menit</span>
+          scheduleCardsEl.innerHTML = activeJadwals.map(j => {
+            const nama = j.namaUlangan || j.title || j.mapel || 'Asesmen CBT SD';
+            const dur = j.durasiMenit || j.durasi || 60;
+            const token = (j.token || j.token_code || 'CKP26A').toUpperCase();
+            const id = j.id || '';
+            return `
+              <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 hover:border-sky-300 transition text-left space-y-1 cursor-pointer active:scale-98" onclick="selectExamSchedule('${token}', '${nama.replace(/'/g, "\\'")}', '${dur}', '${id}')">
+                <div class="flex items-center justify-between">
+                  <span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">🟢 Aktif</span>
+                  <span class="text-[10px] font-mono text-slate-500">${dur} Menit</span>
+                </div>
+                <p class="font-black text-xs text-slate-900 truncate">${nama}</p>
+                <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                  <span>Token: <strong class="font-mono text-sky-700">${token}</strong></span>
+                  <span class="text-sky-600 font-bold hover:underline">Pilih ➡</span>
+                </div>
               </div>
-              <p class="font-black text-xs text-slate-900 truncate">${j.namaUlangan || j.mapel || 'Ulangan Harian'}</p>
-              <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
-                <span>Token: <strong class="font-mono text-sky-700">${j.token || 'CKP26A'}</strong></span>
-                <span class="text-sky-600 font-bold hover:underline">Pilih ➡</span>
-              </div>
+            `;
+          }).join('');
+        } else {
+          scheduleCardsEl.innerHTML = `
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1 text-slate-500 text-xs">
+              <span class="text-xl">📭</span>
+              <p class="font-bold text-slate-700">Belum Ada Jadwal Ulangan Aktif</p>
+              <p class="text-[11px] text-slate-400">Silakan hubungi Guru Kelas Anda untuk mengaktifkan sesi ulangan.</p>
             </div>
-          `).join('');
+          `;
         }
       }
 
@@ -878,9 +893,12 @@
           startBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⏳</span> Memulai ruang ujian...';
 
           try {
+            const matchedJadwal = window.SicakapDB?.getJadwalByToken ? window.SicakapDB.getJadwalByToken(tokenVal) : null;
+            const targetExamId = sessionStorage.getItem('sicakap_exam_id') || matchedJadwal?.id || '00000000-0000-0000-0000-000000000001';
+
             await engine.requestFullscreen();
             await engine.boot({
-              examId: '00000000-0000-0000-0000-000000000001',
+              examId: targetExamId,
               tokenCode: tokenVal
             });
             document.getElementById('modal-token-entry')?.classList.add('hidden');
