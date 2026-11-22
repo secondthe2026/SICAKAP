@@ -462,7 +462,7 @@
     import { renderQuestion } from '/src/engines/question-renderer.js';
     import { initExamAccessibility, renderQuestionNav, hasFilledAnswer } from '/src/engines/accessibility.js';
     import { getActiveSchoolProfile, generateSchoolKopHtml } from '/src/components/school-kop.js';
-    import { getCurrentUserProfile, signOutAndRedirect } from '/src/lib/supabase.js';
+    import { getCurrentUserProfile, signOutAndRedirect, supabase } from '/src/lib/supabase.js';
 
     window.signOutAndRedirect = signOutAndRedirect;
 
@@ -753,8 +753,27 @@
       }
     };
 
+    // Helper pencocokan kelas & status aktif ujian
+    function isClassMatch(examClass, studentClass) {
+      if (!examClass || !studentClass) return true;
+      const normExam = String(examClass).trim().toLowerCase();
+      const normStudent = String(studentClass).trim().toLowerCase();
+      if (normExam === normStudent) return true;
+      const numExam = normExam.replace(/[^0-9]/g, '');
+      const numStudent = normStudent.replace(/[^0-9]/g, '');
+      if (numExam && numStudent && numExam === numStudent) return true;
+      return normExam.includes(normStudent) || normStudent.includes(normExam);
+    }
+
+    function isExamActive(exam) {
+      if (!exam) return false;
+      if (exam.is_active === true) return true;
+      const st = String(exam.status || '').toLowerCase().trim();
+      return ['aktif', 'active', 'published'].includes(st);
+    }
+
     // Quick select schedule in lobby
-    window.selectExamSchedule = (token, title, duration, examId) => {
+    window.selectExamSchedule = (token, title, duration, examId, mapel) => {
       const tokenInput = document.getElementById('input-token-code');
       if (tokenInput) tokenInput.value = token;
       const modTitle = document.getElementById('token-modal-exam-title');
@@ -762,9 +781,11 @@
       const modDur = document.getElementById('token-modal-exam-duration');
       if (modDur) modDur.textContent = duration + ' Menit';
       sessionStorage.setItem('sicakap_token', token);
-      sessionStorage.setItem('sicakap_mapel', title);
+      sessionStorage.setItem('sicakap_mapel', mapel || title);
       sessionStorage.setItem('sicakap_durasi', duration);
       if (examId) sessionStorage.setItem('sicakap_exam_id', examId);
+      const errEl = document.getElementById('token-error-msg');
+      if (errEl) errEl.classList.add('hidden');
     };
 
     // ================= 8. PRINT RECEIPT BUTTON =================
@@ -782,9 +803,10 @@
       let studentName = 'Peserta Didik';
       let studentNisn = '0084928192';
       let studentKelas = 'Kelas 5';
+      let studentSchoolId = null;
       let examTitle = sessionStorage.getItem('sicakap_mapel') || 'Literasi & Numerasi SD';
       let examDuration = (sessionStorage.getItem('sicakap_durasi') || '60') + ' Menit';
-      let initialToken = sessionStorage.getItem('sicakap_token') || 'CKP26A';
+      let initialToken = sessionStorage.getItem('sicakap_token') || '';
 
       try {
         const session = await getCurrentUserProfile();
@@ -794,6 +816,7 @@
           studentName = p.full_name || studentName;
           studentNisn = p.identifier || p.nisn || studentNisn;
           studentKelas = p.kelas || p.class_name || studentKelas;
+          studentSchoolId = p.school_id || null;
 
           if (p.schools) {
             activeSchoolData = p.schools;
@@ -810,7 +833,7 @@
         activeSchoolData = await getActiveSchoolProfile();
       }
 
-      // 2. Render Kop Kabupaten & Sekolah di 3 Tempat (Kop Ringkas, Lobi Lengkap, Selesai Lengkap)
+      // 2. Render Kop Kabupaten & Sekolah di 3 Tempat
       const compactKopEl = document.getElementById('header-kop-compact');
       if (compactKopEl) {
         compactKopEl.innerHTML = generateSchoolKopHtml(activeSchoolData, { compact: true });
@@ -838,40 +861,115 @@
       const tokenInput = document.getElementById('input-token-code');
       if (tokenInput) tokenInput.value = initialToken;
 
-      // 4. Render Daftar Jadwal Ujian Aktif di Lobi
+      // 4. Render Daftar Jadwal Ujian Aktif di Lobi (100% dari Supabase Cloud)
       const scheduleCardsEl = document.getElementById('lobby-schedule-cards');
-      if (scheduleCardsEl && window.SicakapDB) {
-        const jadwals = window.SicakapDB.getJadwal ? window.SicakapDB.getJadwal() : [];
-        const activeJadwals = jadwals.filter(j => j.status === 'Aktif' || j.status === 'active' || j.is_active === true);
-        if (activeJadwals.length > 0) {
-          scheduleCardsEl.innerHTML = activeJadwals.map(j => {
-            const nama = j.namaUlangan || j.title || j.mapel || 'Asesmen CBT SD';
-            const dur = j.durasiMenit || j.durasi || 60;
-            const token = (j.token || j.token_code || 'CKP26A').toUpperCase();
+      let availableExams = [];
+
+      async function loadStudentExams() {
+        if (!scheduleCardsEl) return;
+        scheduleCardsEl.innerHTML = `
+          <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1 text-slate-500 text-xs">
+            <span class="inline-block animate-spin mr-1">⏳</span> Memeriksa jadwal ujian aktif...
+          </div>
+        `;
+
+        try {
+          let cloudExams = [];
+          if (supabase) {
+            let query = supabase.from('exams').select('*');
+            if (studentSchoolId) {
+              query = query.eq('school_id', studentSchoolId);
+            }
+            const { data, error } = await query.order('created_at', { ascending: false });
+            if (!error && Array.isArray(data)) {
+              cloudExams = data;
+            }
+          }
+
+          // Fallback lokal jika jaringan offline
+          if (cloudExams.length === 0 && window.SicakapDB) {
+            cloudExams = window.SicakapDB.getJadwal ? window.SicakapDB.getJadwal() : [];
+          }
+
+          // Filter ujian yang aktif, cocok dengan rombel/kelas siswa, dan bukan token dummy
+          availableExams = cloudExams.filter(e => {
+            const active = isExamActive(e);
+            const classMatch = isClassMatch(e.kelas || e.grade_level, studentKelas);
+            const tok = String(e.token_code || e.token || '').trim().toUpperCase();
+            const notDummy = tok && !['CKP26A', 'ASTS26', 'AKMSD1'].includes(tok);
+            return active && classMatch && notDummy;
+          });
+
+          // Simpan ke cache SicakapDB jika ada data riil
+          if (availableExams.length > 0 && window.SicakapDB) {
+            const mapped = availableExams.map(e => window.SicakapDB.mapExamFromDb(e));
+            window.SicakapDB.saveJadwal(mapped);
+          }
+
+          renderScheduleCards();
+        } catch (err) {
+          console.warn('[ExamRoom] Gagal memuat jadwal Supabase:', err);
+          renderScheduleCards();
+        }
+      }
+
+      function renderScheduleCards() {
+        if (!scheduleCardsEl) return;
+        if (availableExams.length > 0) {
+          scheduleCardsEl.innerHTML = availableExams.map(j => {
+            const nama = j.title || j.nama_ulangan || j.namaUlangan || j.subject || j.mapel || 'Asesmen CBT SD';
+            const dur = j.duration_minutes || j.durasiMenit || j.durasi || 60;
+            const token = String(j.token_code || j.token || '').trim().toUpperCase();
             const id = j.id || '';
+            const mapel = j.subject || j.mapel || nama;
             return `
-              <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 hover:border-sky-300 transition text-left space-y-1 cursor-pointer active:scale-98" onclick="selectExamSchedule('${token}', '${nama.replace(/'/g, "\\'")}', '${dur}', '${id}')">
+              <div class="p-3 rounded-2xl bg-white border border-slate-200 hover:border-sky-400 hover:shadow-xs transition text-left space-y-1 cursor-pointer active:scale-98" onclick="selectExamSchedule('${token}', '${nama.replace(/'/g, "\\'")}', '${dur}', '${id}', '${mapel.replace(/'/g, "\\'")}')">
                 <div class="flex items-center justify-between">
                   <span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">🟢 Aktif</span>
                   <span class="text-[10px] font-mono text-slate-500">${dur} Menit</span>
                 </div>
                 <p class="font-black text-xs text-slate-900 truncate">${nama}</p>
-                <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
-                  <span>Token: <strong class="font-mono text-sky-700">${token}</strong></span>
+                <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                  <span>Token: <strong class="font-mono text-sky-700 tracking-wider">${token}</strong></span>
                   <span class="text-sky-600 font-bold hover:underline">Pilih ➡</span>
                 </div>
               </div>
             `;
           }).join('');
         } else {
+          // Status jujur tanpa data dummy
           scheduleCardsEl.innerHTML = `
-            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1 text-slate-500 text-xs">
-              <span class="text-xl">📭</span>
-              <p class="font-bold text-slate-700">Belum Ada Jadwal Ulangan Aktif</p>
-              <p class="text-[11px] text-slate-400">Silakan hubungi Guru Kelas Anda untuk mengaktifkan sesi ulangan.</p>
+            <div class="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-center space-y-1.5 text-slate-600 text-xs">
+              <span class="text-2xl">📭</span>
+              <p class="font-bold text-slate-800">Belum ada jadwal ujian yang diaktifkan oleh Guru/Proktor untuk kelas Anda.</p>
+              <p class="text-[11px] text-slate-500">Silakan tanyakan kepada Guru atau Proktor ruangan untuk mengaktifkan jadwal sesi ulangan.</p>
             </div>
           `;
         }
+      }
+
+      await loadStudentExams();
+
+      // Listener perubahan manual token input -> sinkronkan mata asesmen & durasi otomatis
+      if (tokenInput) {
+        tokenInput.addEventListener('input', () => {
+          const val = tokenInput.value.trim().toUpperCase();
+          const errEl = document.getElementById('token-error-msg');
+          if (errEl) errEl.classList.add('hidden');
+
+          const matched = availableExams.find(e => String(e.token_code || e.token || '').trim().toUpperCase() === val);
+          if (matched) {
+            const nama = matched.title || matched.nama_ulangan || matched.subject || 'Asesmen CBT SD';
+            const dur = matched.duration_minutes || matched.durasiMenit || 60;
+            const mapel = matched.subject || matched.mapel || nama;
+            if (modTitle) modTitle.textContent = nama;
+            if (modDur) modDur.textContent = `${dur} Menit`;
+            sessionStorage.setItem('sicakap_token', val);
+            sessionStorage.setItem('sicakap_mapel', mapel);
+            sessionStorage.setItem('sicakap_durasi', dur);
+            sessionStorage.setItem('sicakap_exam_id', matched.id);
+          }
+        });
       }
 
       // 5. Handler Mulai Ujian (Boot CBTEngine)
@@ -883,7 +981,7 @@
 
           if (!tokenVal) {
             if (errEl) {
-              errEl.textContent = '❌ Mohon masukkan 6 karakter Token Ujian.';
+              errEl.textContent = '❌ Mohon masukkan Token Ujian dari Guru/Proktor.';
               errEl.classList.remove('hidden');
             }
             return;
@@ -893,8 +991,26 @@
           startBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⏳</span> Memulai ruang ujian...';
 
           try {
-            const matchedJadwal = window.SicakapDB?.getJadwalByToken ? window.SicakapDB.getJadwalByToken(tokenVal) : null;
-            const targetExamId = sessionStorage.getItem('sicakap_exam_id') || matchedJadwal?.id || '00000000-0000-0000-0000-000000000001';
+            // Cari data ujian dari cache lokal atau query langsung ke Supabase
+            let matchedExam = availableExams.find(e => String(e.token_code || e.token || '').trim().toUpperCase() === tokenVal);
+            if (!matchedExam && supabase) {
+              const { data: qExams } = await supabase.from('exams')
+                .select('*')
+                .ilike('token_code', tokenVal)
+                .limit(1);
+              if (qExams && qExams.length > 0) {
+                matchedExam = qExams[0];
+              }
+            }
+
+            const targetExamId = matchedExam?.id || sessionStorage.getItem('sicakap_exam_id') || null;
+
+            if (matchedExam) {
+              sessionStorage.setItem('sicakap_exam_id', matchedExam.id);
+              sessionStorage.setItem('sicakap_token', tokenVal);
+              sessionStorage.setItem('sicakap_mapel', matchedExam.subject || matchedExam.title || 'Asesmen SD');
+              sessionStorage.setItem('sicakap_durasi', matchedExam.duration_minutes || 60);
+            }
 
             await engine.requestFullscreen();
             await engine.boot({

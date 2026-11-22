@@ -407,12 +407,23 @@ CREATE POLICY "guru_manage_class_exams" ON public.exams
     AND (kelas = public.get_my_kelas() OR grade_level = public.get_my_kelas())
   );
 
+DROP POLICY IF EXISTS "siswa_read_class_active_exams" ON public.exams;
 CREATE POLICY "siswa_read_class_active_exams" ON public.exams
   FOR SELECT USING (
     school_id = public.get_my_school_id()
     AND public.get_my_role() = 'siswa'
-    AND (kelas = public.get_my_kelas() OR grade_level = public.get_my_kelas())
-    AND status::text = 'active'
+    AND (
+      status::text IN ('active', 'aktif', 'published')
+      OR is_active = true
+    )
+    AND (
+      kelas IS NULL
+      OR public.get_my_kelas() IS NULL
+      OR TRIM(LOWER(kelas)) = TRIM(LOWER(public.get_my_kelas()))
+      OR regexp_replace(kelas, '[^0-9]', '', 'g') = regexp_replace(public.get_my_kelas(), '[^0-9]', '', 'g')
+      OR grade_level IS NULL
+      OR TRIM(LOWER(grade_level)) = TRIM(LOWER(public.get_my_kelas()))
+    )
   );
 
 -- D. QUESTIONS (ISOLASI MUTLAK PER KELAS GURU)
@@ -438,16 +449,11 @@ CREATE POLICY "guru_manage_class_questions" ON public.questions
     AND (kelas = public.get_my_kelas())
   );
 
+DROP POLICY IF EXISTS "siswa_read_active_exam_questions" ON public.questions;
 CREATE POLICY "siswa_read_active_exam_questions" ON public.questions
   FOR SELECT USING (
     school_id = public.get_my_school_id()
     AND public.get_my_role() = 'siswa'
-    AND EXISTS (
-      SELECT 1 FROM public.exam_sessions s
-      WHERE s.exam_id = questions.exam_id
-        AND s.student_id = auth.uid()
-        AND s.status::text = 'in_progress'
-    )
   );
 
 -- E. QUESTION_KEYS (KUNCI JAWABAN TERISOLASI)
@@ -493,13 +499,24 @@ CREATE POLICY "guru_manage_class_sessions" ON public.exam_sessions
     AND (kelas = public.get_my_kelas())
   );
 
+DROP POLICY IF EXISTS "siswa_read_own_session" ON public.exam_sessions;
 CREATE POLICY "siswa_read_own_session" ON public.exam_sessions
   FOR SELECT USING (student_id = auth.uid());
 
-CREATE POLICY "siswa_update_own_active_session" ON public.exam_sessions
+DROP POLICY IF EXISTS "siswa_insert_own_session" ON public.exam_sessions;
+CREATE POLICY "siswa_insert_own_session" ON public.exam_sessions
+  FOR INSERT WITH CHECK (
+    student_id = auth.uid()
+    AND public.get_my_role() = 'siswa'
+  );
+
+DROP POLICY IF EXISTS "siswa_update_own_active_session" ON public.exam_sessions;
+DROP POLICY IF EXISTS "siswa_update_own_session" ON public.exam_sessions;
+CREATE POLICY "siswa_update_own_session" ON public.exam_sessions
   FOR UPDATE USING (
     student_id = auth.uid()
-    AND status::text = 'in_progress'
+  ) WITH CHECK (
+    student_id = auth.uid()
   );
 
 -- G. EXAM_RESULTS (REKAP NILAI)
@@ -516,8 +533,24 @@ CREATE POLICY "guru_manage_class_results" ON public.exam_results
     AND (kelas = public.get_my_kelas())
   );
 
+DROP POLICY IF EXISTS "siswa_read_own_result" ON public.exam_results;
 CREATE POLICY "siswa_read_own_result" ON public.exam_results
   FOR SELECT USING (student_id = auth.uid());
+
+DROP POLICY IF EXISTS "siswa_insert_own_result" ON public.exam_results;
+CREATE POLICY "siswa_insert_own_result" ON public.exam_results
+  FOR INSERT WITH CHECK (
+    student_id = auth.uid()
+    AND public.get_my_role() = 'siswa'
+  );
+
+DROP POLICY IF EXISTS "siswa_update_own_result" ON public.exam_results;
+CREATE POLICY "siswa_update_own_result" ON public.exam_results
+  FOR UPDATE USING (
+    student_id = auth.uid()
+  ) WITH CHECK (
+    student_id = auth.uid()
+  );
 
 -- H. STUDENT_ANSWERS (JAWABAN SISWA)
 CREATE POLICY "admin_read_answers" ON public.student_answers
@@ -537,21 +570,22 @@ CREATE POLICY "guru_read_class_answers" ON public.student_answers
     )
   );
 
+DROP POLICY IF EXISTS "siswa_upsert_answers_while_in_progress" ON public.student_answers;
 CREATE POLICY "siswa_upsert_answers_while_in_progress" ON public.student_answers
   FOR ALL USING (
-    EXISTS (
+    student_id = auth.uid()
+    OR EXISTS (
       SELECT 1 FROM public.exam_sessions s
       WHERE s.id = student_answers.session_id
         AND s.student_id = auth.uid()
-        AND s.status::text = 'in_progress'
     )
   )
   WITH CHECK (
-    EXISTS (
+    student_id = auth.uid()
+    OR EXISTS (
       SELECT 1 FROM public.exam_sessions s
       WHERE s.id = student_answers.session_id
         AND s.student_id = auth.uid()
-        AND s.status::text = 'in_progress'
     )
   );
 

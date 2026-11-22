@@ -72,11 +72,7 @@
       { id: 'SIS-009', nisn: '0084928200', nama: 'Intan Permata Sari', rombelId: 'RMB-2A', password: 'SD2A-5510', statusUjian: 'Belum Ujian', updatedAt: '2026-10-28' },
       { id: 'SIS-010', nisn: '0084928201', nama: 'Joko Prabowo', rombelId: 'RMB-5A', password: 'SD5A-4499', statusUjian: 'Sedang Mengerjakan', updatedAt: '2026-10-28' }
     ],
-    jadwal: [
-      { id: 'JDW-01', namaUlangan: 'Ulangan Harian Bab 2 (Pecahan & Desimal)', mapel: 'Matematika SD', rombelId: 'RMB-5A', tanggal: '2026-10-28', jamMulai: '08:00', durasiMenit: 60, token: 'CKP26A', status: 'Aktif', updatedAt: '2026-10-28' },
-      { id: 'JDW-02', namaUlangan: 'Asesmen Sumatif Tengah Semester (ASTS)', mapel: 'IPAS Fase C', rombelId: 'RMB-5B', tanggal: '2026-10-29', jamMulai: '09:30', durasiMenit: 60, token: 'ASTS26', status: 'Aktif', updatedAt: '2026-10-28' },
-      { id: 'JDW-03', namaUlangan: 'Simulasi Literasi & AKM SD', mapel: 'Bahasa Indonesia', rombelId: 'RMB-6A', tanggal: '2026-10-30', jamMulai: '08:00', durasiMenit: 90, token: 'AKMSD1', status: 'Nonaktif', updatedAt: '2026-10-28' }
-    ],
+    jadwal: [],
     soal: [
       {
         id: 1,
@@ -532,6 +528,17 @@
           const storedProfil = localStorage.getItem(KEYS.PROFIL_SEKOLAH);
           if (storedProfil && storedProfil.includes('SDN 1 Nusantara')) {
             localStorage.removeItem(KEYS.PROFIL_SEKOLAH);
+          }
+          const storedJadwal = localStorage.getItem(KEYS.JADWAL);
+          if (storedJadwal && (storedJadwal.includes('CKP26A') || storedJadwal.includes('ASTS26') || storedJadwal.includes('AKMSD1'))) {
+            const parsed = JSON.parse(storedJadwal);
+            if (Array.isArray(parsed)) {
+              const clean = parsed.filter(j => {
+                const t = String(j.token || j.token_code || '').trim().toUpperCase();
+                return t && t !== 'CKP26A' && t !== 'ASTS26' && t !== 'AKMSD1';
+              });
+              localStorage.setItem(KEYS.JADWAL, JSON.stringify(clean));
+            }
           }
         } catch (e) {}
 
@@ -1107,11 +1114,20 @@
 
     getJadwal: function () {
       this.init();
-      const raw = this.read(KEYS.JADWAL, SEED_DATA.jadwal);
-      return Array.isArray(raw) ? raw.map(j => this.mapExamFromDb(j)) : [];
+      const raw = this.read(KEYS.JADWAL, []);
+      const dummyTokens = ['CKP26A', 'ASTS26', 'AKMSD1'];
+      return Array.isArray(raw)
+        ? raw
+            .map(j => this.mapExamFromDb(j))
+            .filter(j => {
+              const tok = String(j.token || j.token_code || '').trim().toUpperCase();
+              return tok && !dummyTokens.includes(tok);
+            })
+        : [];
     },
     getJadwalByToken: function (token) {
       const clean = String(token || '').trim().toUpperCase();
+      if (!clean || ['CKP26A', 'ASTS26', 'AKMSD1'].includes(clean)) return null;
       return this.getJadwal().find(j => {
         const t = (j.token || j.token_code || '').toUpperCase();
         return t === clean;

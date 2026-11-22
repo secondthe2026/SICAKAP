@@ -16,6 +16,7 @@ DECLARE
   v_profile public.profiles%ROWTYPE;
   v_exam public.exams%ROWTYPE;
   v_session public.exam_sessions%ROWTYPE;
+  v_clean_token TEXT := UPPER(TRIM(COALESCE(p_token_code, '')));
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Sesi login tidak valid.';
@@ -26,15 +27,27 @@ BEGIN
     RAISE EXCEPTION 'Hanya akun siswa aktif yang dapat memulai ujian.';
   END IF;
 
+  -- Cari ujian yang aktif & cocok dengan ID atau Token
   SELECT * INTO v_exam
   FROM public.exams
-  WHERE id = p_exam_id
-    AND school_id = v_profile.school_id
-    AND status = 'active';
+  WHERE (
+    (p_exam_id IS NOT NULL AND id = p_exam_id)
+    OR (v_clean_token <> '' AND UPPER(TRIM(COALESCE(token_code, ''))) = v_clean_token)
+  )
+  AND (school_id = v_profile.school_id OR school_id IS NULL)
+  AND (
+    status::text IN ('active', 'aktif', 'published')
+    OR is_active = true
+  )
+  ORDER BY created_at DESC
+  LIMIT 1;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Ujian tidak ditemukan atau belum diaktifkan proktor.';
   END IF;
+
+  -- Ikat p_exam_id ke ID ujian yang sebenarnya
+  p_exam_id := v_exam.id;
 
   -- Cek sesi existing (jika siswa refresh halaman / lanjut ujian)
   SELECT * INTO v_session
@@ -67,7 +80,7 @@ BEGIN
     END IF;
   ELSE
     -- Sesi baru: wajib cocokkan token ujian aktif
-    IF v_exam.token_code IS NOT NULL AND UPPER(TRIM(COALESCE(p_token_code, ''))) <> UPPER(TRIM(v_exam.token_code)) THEN
+    IF v_exam.token_code IS NOT NULL AND v_clean_token <> UPPER(TRIM(v_exam.token_code)) THEN
       RAISE EXCEPTION 'Token ujian salah. Periksa kembali token dari proktor.';
     END IF;
 
@@ -76,9 +89,9 @@ BEGIN
     END IF;
 
     INSERT INTO public.exam_sessions (
-      exam_id, school_id, student_id, status, server_started_at, device_token
+      exam_id, school_id, student_id, status, server_started_at, device_token, kelas
     ) VALUES (
-      p_exam_id, v_profile.school_id, v_uid, 'in_progress', now(), COALESCE(p_device_token, gen_random_uuid())
+      p_exam_id, v_profile.school_id, v_uid, 'in_progress', now(), COALESCE(p_device_token, gen_random_uuid()), COALESCE(v_profile.kelas, v_exam.kelas)
     )
     RETURNING * INTO v_session;
   END IF;
