@@ -1,5 +1,60 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Cache in-memory untuk daftar model aktif Google Gemini agar tidak berulang kali ListModels
+let cachedFlashModels = null;
+let cachedModelsTime = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 jam
+
+async function getAvailableFlashModels(apiKey) {
+  if (cachedFlashModels && (Date.now() - cachedModelsTime < CACHE_TTL_MS)) {
+    return cachedFlashModels;
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const models = (data.models || [])
+        .filter(m => {
+          const methods = m.supportedGenerationMethods || [];
+          const rawName = (m.name || '').replace(/^models\//, '').toLowerCase();
+          if (!methods.includes('generateContent')) return false;
+          if (!rawName.includes('flash')) return false;
+
+          // Hapus total model lama & model non-teks
+          const excludes = ['image', 'audio', 'tts', 'embedding', 'live', '2.0', '1.5', 'vision'];
+          return !excludes.some(ex => rawName.includes(ex));
+        })
+        .map(m => m.name.replace(/^models\//, ''));
+
+      // Urutkan versi terbaru di depan (3.x > 2.5 > lainnya)
+      models.sort((a, b) => {
+        const score = (str) => {
+          const s = str.toLowerCase();
+          if (s.includes('3.')) return 300;
+          if (s.includes('2.5-flash-lite')) return 260;
+          if (s.includes('2.5-flash')) return 250;
+          if (s.includes('flash-latest')) return 240;
+          return 100;
+        };
+        return score(b) - score(a);
+      });
+
+      if (models.length > 0) {
+        cachedFlashModels = models;
+        cachedModelsTime = Date.now();
+        return models;
+      }
+    }
+  } catch (err) {
+    console.warn('[Gemini ListModels Warning]', err.message);
+  }
+
+  // Fallback aman default tanpa model usang
+  return ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+}
+
 export default async function handler(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -89,72 +144,77 @@ export default async function handler(req, res) {
     const cleanJumlah = Math.min(Math.max(parseInt(jumlah) || 5, 1), 25);
     const cleanKelas = String(kelas).replace(/[^0-9]/g, '') || '5';
 
-    // 5. Prompt Ringkas Khusus SD Indonesia (Kurikulum Merdeka) agar respons cepat & hemat token
+    // 5. Prompt Padat & Terstandar (Format Murni JSON Array)
     const systemPrompt = `Pakar pembuat soal asesmen SD Kurikulum Merdeka Indonesia.
-Hasilkan ${cleanJumlah} butir soal pilihan ganda A, B, C, D ramah anak SD sesuai jenjang kelas.
-Ketentuan Wajib:
-1. Tepat 1 kunci jawaban benar (A, B, C, atau D). Tiga opsi pengecoh logis dan mendidik.
-2. Bahasa Indonesia baku dan sederhana. Stimulus cerita ringkas jika relevan.
-3. Level kognitif: LOTS, MOTS, atau HOTS.
-4. Output murni JSON Array sesuai schema.`;
+Hasilkan ${cleanJumlah} butir soal pilihan ganda A, B, C, D ramah anak SD.
+Syarat:
+1. Tepat 1 kunci jawaban benar ("A", "B", "C", atau "D"). 3 pengecoh logis & mendidik.
+2. Bahasa Indonesia baku dan santun sesuai usia murid SD.
+3. Stimulus cerita ringkas jika relevan.
+4. Output WAJIB murni JSON Array objek tanpa teks pengantar di luar blok JSON.`;
 
-    const userPrompt = `Buat ${cleanJumlah} butir soal pilihan ganda (opsi A, B, C, D) untuk:
+    const userPrompt = `Buatkan ${cleanJumlah} butir soal pilihan ganda (opsi A, B, C, D) untuk:
 - Mapel: ${mapel}
-- Kelas: Kelas ${cleanKelas} SD
+- Jenjang: Kelas ${cleanKelas} SD
 - Topik: ${topik}
 - Kesulitan: ${tingkatKesulitan}
-${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n"""` : ''}`;
+${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n"""\n` : ''}
+KEMBALIKAN HANYA JSON ARRAY OBJEK dengan struktur persis seperti ini:
+[
+  {
+    "pertanyaan": "Teks pertanyaan jelas dan lugas...",
+    "stimulus": "Wacana/cerita pengantar jika ada atau kosongkan",
+    "opsi_a": "Teks opsi A",
+    "opsi_b": "Teks opsi B",
+    "opsi_c": "Teks opsi C",
+    "opsi_d": "Teks opsi D",
+    "kunci_jawaban": "A",
+    "pembahasan": "Penjelasan ringkas mengapa jawaban tersebut benar",
+    "level_kognitif": "LOTS",
+    "topik": "${topik}"
+  }
+]`;
 
-    const schema = {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          pertanyaan: { type: 'STRING' },
-          stimulus: { type: 'STRING' },
-          opsi_a: { type: 'STRING' },
-          opsi_b: { type: 'STRING' },
-          opsi_c: { type: 'STRING' },
-          opsi_d: { type: 'STRING' },
-          kunci_jawaban: { type: 'STRING', enum: ['A', 'B', 'C', 'D'] },
-          pembahasan: { type: 'STRING' },
-          level_kognitif: { type: 'STRING', enum: ['LOTS', 'MOTS', 'HOTS'] },
-          topik: { type: 'STRING' }
-        },
-        required: ['pertanyaan', 'opsi_a', 'opsi_b', 'opsi_c', 'opsi_d', 'kunci_jawaban', 'level_kognitif']
-      }
-    };
+    // 6. Deteksi Otomatis Model Aktif + Fallback
+    const candidateModels = [];
 
-    // 6. Eksekusi ke Gemini REST API dengan Fallback Model & Thinking Budget = 0
-    let requestedModel = process.env.GEMINI_MODEL;
-    if (!requestedModel || requestedModel === 'gemini-1.5-flash') {
-      requestedModel = 'gemini-2.5-flash-lite';
+    // Jika ada GEMINI_MODEL di env dan bukan model usang (1.5 / 2.0), jadikan prioritas
+    const envModel = process.env.GEMINI_MODEL?.trim();
+    if (envModel && !envModel.includes('1.5') && !envModel.includes('2.0')) {
+      candidateModels.push(envModel);
     }
 
-    const fallbackList = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-    const candidateModels = Array.from(new Set([requestedModel, ...fallbackList]));
+    // Dapatkan model flash aktif dari API ListModels
+    const activeFlashModels = await getAvailableFlashModels(geminiApiKey);
+    for (const m of activeFlashModels) {
+      if (!candidateModels.includes(m)) candidateModels.push(m);
+    }
+
+    // Default cadangan jika belum ada
+    const safeDefaults = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+    for (const m of safeDefaults) {
+      if (!candidateModels.includes(m)) candidateModels.push(m);
+    }
+
+    // Ambil maksimal 3 kandidat teratas
+    const topCandidates = candidateModels.slice(0, 3);
+
+    // Payload standar tanpa thinkingConfig agar kompatibel 100% dan tidak memicu HTTP 400
+    const genConfig = {
+      responseMimeType: 'application/json',
+      temperature: 0.7
+    };
 
     let rawJsonText = null;
-    let lastErr = null;
     let usedModel = null;
+    const attemptErrors = [];
 
-    for (const model of candidateModels) {
+    for (const model of topCandidates) {
       const controller = new AbortController();
-      const timeoutTimer = setTimeout(() => controller.abort(), 25000); // 25s timeout per request
+      const timeoutTimer = setTimeout(() => controller.abort(), 25000); // 25s timeout per percobaan
 
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
-
-        const genConfig = {
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-          temperature: 0.7
-        };
-
-        // Matikan internal thinking budget pada Gemini 2.5 Flash agar tidak delay/timeout
-        if (model.includes('2.5')) {
-          genConfig.thinkingConfig = { thinkingBudget: 0 };
-        }
 
         const geminiRes = await fetch(url, {
           method: 'POST',
@@ -177,17 +237,21 @@ ${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n
             rawJsonText = partText;
             usedModel = model;
             break; // Sukses!
+          } else {
+            attemptErrors.push(`${model}: respons teks kosong`);
           }
         } else {
           const errJson = await geminiRes.json().catch(() => ({}));
-          lastErr = errJson.error?.message || `HTTP ${geminiRes.status} on model ${model}`;
-          console.warn(`[Gemini] Model ${model} returned error:`, lastErr, '- Mencoba model fallback...');
+          const errMsg = errJson.error?.message || `HTTP ${geminiRes.status}`;
+          attemptErrors.push(`${model} (${errMsg})`);
+          console.warn(`[Gemini] Model ${model} gagal:`, errMsg, '- Mencoba model berikutnya...');
           continue;
         }
       } catch (e) {
         clearTimeout(timeoutTimer);
-        lastErr = e.name === 'AbortError' ? `Timeout 25s pada model ${model}` : e.message;
-        console.warn(`[Gemini] Network/timeout error on model ${model}:`, lastErr, '- Mencoba fallback...');
+        const errMsg = e.name === 'AbortError' ? 'timeout 25s' : e.message;
+        attemptErrors.push(`${model} (${errMsg})`);
+        console.warn(`[Gemini] Error pada ${model}:`, errMsg, '- Mencoba model berikutnya...');
         continue;
       }
     }
@@ -195,7 +259,7 @@ ${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n
     if (!rawJsonText) {
       return res.status(500).json({
         ok: false,
-        error: `Gagal memanggil Gemini AI: ${lastErr || 'Respons kosong dari server AI.'}. Pastikan GEMINI_API_KEY valid di Vercel Settings.`
+        error: `Gagal memanggil Gemini AI. Percobaan: ${attemptErrors.join(' | ')}. Pastikan GEMINI_API_KEY valid di Vercel Settings.`
       });
     }
 
@@ -217,6 +281,13 @@ ${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n
       });
     }
 
+    // Jika AI mengembalikan objek pembungkus { questions: [...] } atau { data: [...] }
+    if (!Array.isArray(parsedArray)) {
+      if (Array.isArray(parsedArray.questions)) parsedArray = parsedArray.questions;
+      else if (Array.isArray(parsedArray.data)) parsedArray = parsedArray.data;
+      else if (Array.isArray(parsedArray.soal)) parsedArray = parsedArray.soal;
+    }
+
     if (!Array.isArray(parsedArray) || parsedArray.length === 0) {
       return res.status(500).json({
         ok: false,
@@ -225,14 +296,14 @@ ${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n
     }
 
     const normalizedQuestions = parsedArray.map((item, index) => {
-      const kunciUpper = String(item.kunci_jawaban || 'A').trim().toUpperCase();
+      const kunciUpper = String(item.kunci_jawaban || item.kunci || 'A').trim().toUpperCase();
       const validKunci = ['A', 'B', 'C', 'D'].includes(kunciUpper) ? kunciUpper : 'A';
 
       const options = [
-        { key: 'A', text: String(item.opsi_a || 'Pilihan A').trim() },
-        { key: 'B', text: String(item.opsi_b || 'Pilihan B').trim() },
-        { key: 'C', text: String(item.opsi_c || 'Pilihan C').trim() },
-        { key: 'D', text: String(item.opsi_d || 'Pilihan D').trim() }
+        { key: 'A', text: String(item.opsi_a || item.a || item.opsi?.[0]?.text || 'Pilihan A').trim() },
+        { key: 'B', text: String(item.opsi_b || item.b || item.opsi?.[1]?.text || 'Pilihan B').trim() },
+        { key: 'C', text: String(item.opsi_c || item.c || item.opsi?.[2]?.text || 'Pilihan C').trim() },
+        { key: 'D', text: String(item.opsi_d || item.d || item.opsi?.[3]?.text || 'Pilihan D').trim() }
       ];
 
       return {
@@ -243,12 +314,12 @@ ${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n
         tipe: 'single',
         stimulus: item.stimulus ? String(item.stimulus).trim() : '',
         wacana: item.stimulus ? String(item.stimulus).trim() : '',
-        pertanyaan: String(item.pertanyaan || '').trim(),
+        pertanyaan: String(item.pertanyaan || item.soal || '').trim(),
         opsi: options,
         kunci: validKunci,
         pembahasan: item.pembahasan ? String(item.pembahasan).trim() : '',
         cpTp: item.topik ? `${item.topik} (Kelas ${cleanKelas} SD)` : `${topik} (Kelas ${cleanKelas} SD)`,
-        levelKognitif: item.level_kognitif || 'MOTS',
+        levelKognitif: item.level_kognitif || item.levelKognitif || 'MOTS',
         points: 1.00
       };
     });
@@ -256,7 +327,7 @@ ${materiReferensi ? `- Teks Referensi:\n"""\n${materiReferensi.slice(0, 1500)}\n
     return res.status(200).json({
       ok: true,
       count: normalizedQuestions.length,
-      modelUsed: usedModel || requestedModel || 'gemini-2.5-flash-lite',
+      modelUsed: usedModel || 'gemini',
       questions: normalizedQuestions
     });
 
