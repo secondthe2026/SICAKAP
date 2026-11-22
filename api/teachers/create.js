@@ -210,6 +210,31 @@ export default async function handler(req, res) {
       throw new Error(`Gagal menyimpan data profil guru ke tabel profiles: ${upsertErr.message}`);
     }
 
+    // 5. Kaitkan Guru ke tabel classes sebagai wali kelas (homeroom_teacher_id)
+    try {
+      const cleanRombel = String(rombelWali).trim();
+      const gradeMatch = cleanRombel.match(/\d+/);
+      const gradeLevel = gradeMatch ? gradeMatch[0] : null;
+
+      // Update classes where school_id = targetSchoolId and name matches
+      await adminClient
+        .from('classes')
+        .update({ homeroom_teacher_id: authUserId })
+        .eq('school_id', targetSchoolId)
+        .or(`name.ilike."%${cleanRombel}%",name.ilike."%${cleanRombel.replace(/^kelas\s*/i, '')}%"`);
+
+      if (gradeLevel) {
+        await adminClient
+          .from('classes')
+          .update({ homeroom_teacher_id: authUserId })
+          .eq('school_id', targetSchoolId)
+          .eq('grade_level', gradeLevel)
+          .is('homeroom_teacher_id', null);
+      }
+    } catch (classLinkErr) {
+      console.warn('[API Create Teacher] Class link warning (safe ignore):', classLinkErr);
+    }
+
     return res.status(200).json({
       ok: true,
       message: `Akun login guru "${nama}" berhasil dibuat & disinkronkan ke Supabase Auth.`,

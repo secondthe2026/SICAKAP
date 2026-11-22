@@ -191,6 +191,32 @@ export default async function handler(req, res) {
 
     if (upsertErr) throw upsertErr;
 
+    // Kaitkan Guru ke tabel classes sebagai wali kelas jika ada penugasan rombel
+    const cleanRombel = String(rombelWali || teacherProfile?.kelas || '').trim();
+    if (cleanRombel && authUserId && targetSchoolId) {
+      try {
+        const gradeMatch = cleanRombel.match(/\d+/);
+        const gradeLevel = gradeMatch ? gradeMatch[0] : null;
+
+        await adminClient
+          .from('classes')
+          .update({ homeroom_teacher_id: authUserId })
+          .eq('school_id', targetSchoolId)
+          .or(`name.ilike."%${cleanRombel}%",name.ilike."%${cleanRombel.replace(/^kelas\s*/i, '')}%"`);
+
+        if (gradeLevel) {
+          await adminClient
+            .from('classes')
+            .update({ homeroom_teacher_id: authUserId })
+            .eq('school_id', targetSchoolId)
+            .eq('grade_level', gradeLevel)
+            .is('homeroom_teacher_id', null);
+        }
+      } catch (classLinkErr) {
+        console.warn('[API Reset Teacher Password] Class link warning:', classLinkErr);
+      }
+    }
+
     return res.status(200).json({
       ok: true,
       message: `Kata sandi akun guru "${profileUpdate.full_name}" berhasil direset & diaktifkan ke "${targetPassword}".`,
