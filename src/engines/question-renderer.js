@@ -116,7 +116,7 @@ function renderAnswerInput(zone, question, savedAnswer, onChange) {
           }">
             <input type="radio" name="q_${question.id}" value="${opt.key}" ${checked ? 'checked' : ''}
                    class="mt-1 h-5 w-5 accent-blue-600" />
-            <span class="font-bold text-blue-700">${DOMPurify.sanitize(opt.key)}.</span>
+            <span class="font-bold text-blue-700">${DOMPurify.sanitize(opt.displayKey || opt.key)}.</span>
             <div class="flex-1">
               <span>${sanitizeHtml(opt.text)}</span>
               ${opt.image_url ? `<img src="${DOMPurify.sanitize(opt.image_url)}" class="mt-2 max-h-36 rounded-lg border" />` : ''}
@@ -147,7 +147,7 @@ function renderAnswerInput(zone, question, savedAnswer, onChange) {
           }">
             <input type="checkbox" value="${opt.key}" ${checked ? 'checked' : ''}
                    class="mt-1 h-5 w-5 rounded accent-emerald-600" />
-            <span class="font-bold text-emerald-700">${DOMPurify.sanitize(opt.key)}.</span>
+            <span class="font-bold text-emerald-700">${DOMPurify.sanitize(opt.displayKey || opt.key)}.</span>
             <div class="flex-1">${sanitizeHtml(opt.text)}</div>
           </label>`;
       })

@@ -2308,6 +2308,116 @@
     }
 
     // ==============================================================
+    // HELPER KOREKSI JAWABAN TERPUSAT (ROBUST AUTO-GRADING)
+    // ==============================================================
+    function isAnswerCorrect(question, studentAnswer) {
+      if (!question || !studentAnswer) return false;
+
+      const type = question.type || 'single';
+
+      // 1. Ekstrak Kunci Jawaban
+      let rawKey = question.answer_key ?? question.correct_answer ?? question.kunci ?? question.kunci_jawaban ?? question.correct_index ?? question.correct;
+      if (rawKey && typeof rawKey === 'object' && !Array.isArray(rawKey)) {
+        if (rawKey.correct !== undefined) rawKey = rawKey.correct;
+        else if (rawKey.accepted !== undefined) rawKey = rawKey.accepted;
+        else if (rawKey.key !== undefined) rawKey = rawKey.key;
+        else if (rawKey.value !== undefined) rawKey = rawKey.value;
+      }
+
+      // 2. Ekstrak Jawaban Siswa
+      let rawAns = studentAnswer;
+      if (studentAnswer && typeof studentAnswer === 'object' && !Array.isArray(studentAnswer)) {
+        if (studentAnswer.selected !== undefined) rawAns = studentAnswer.selected;
+        else if (studentAnswer.value !== undefined) rawAns = studentAnswer.value;
+        else if (studentAnswer.selectedKey !== undefined) rawAns = studentAnswer.selectedKey;
+        else if (studentAnswer.text !== undefined) rawAns = studentAnswer.text;
+        else if (studentAnswer.answers !== undefined) rawAns = studentAnswer.answers;
+        else if (studentAnswer.pairs !== undefined) rawAns = studentAnswer.pairs;
+        else if (studentAnswer.answer !== undefined) rawAns = studentAnswer.answer;
+      }
+
+      // Helper normalisasi huruf / indeks
+      function normalizeToLetter(val, options) {
+        if (val === null || val === undefined) return '';
+        const s = String(val).trim();
+        if (!s) return '';
+
+        // Jika angka 0..4 -> 'A'..'E'
+        if (/^[0-4]$/.test(s)) {
+          return String.fromCharCode(65 + parseInt(s, 10));
+        }
+
+        // Jika format prefix seperti "A." atau "A)" atau "(A)"
+        const m = s.match(/^\(?([A-Ea-e])[\.\)\:\s]/);
+        if (m) return m[1].toUpperCase();
+
+        // Jika huruf tunggal A-E
+        if (s.length === 1 && /^[A-Ea-e]$/.test(s)) {
+          return s.toUpperCase();
+        }
+
+        // Jika mencocokkan teks opsi
+        if (Array.isArray(options)) {
+          const sLower = s.toLowerCase();
+          for (let i = 0; i < options.length; i++) {
+            const opt = options[i];
+            const optText = (typeof opt === 'string' ? opt : (opt.text || opt.label || '')).trim().toLowerCase();
+            if (optText && (optText === sLower || sLower.includes(optText))) {
+              const optKey = (typeof opt === 'object' && (opt.originalKey || opt.key)) ? (opt.originalKey || opt.key) : String.fromCharCode(65 + i);
+              return String(optKey).toUpperCase();
+            }
+          }
+        }
+
+        return s.toUpperCase();
+      }
+
+      // 3. Evaluasi berdasarkan tipe soal
+      if (type === 'single' || type === 'mcq' || type === 'pg' || !type) {
+        const keyLetter = normalizeToLetter(rawKey, question.options);
+        const ansLetter = normalizeToLetter(rawAns, question.options);
+        if (keyLetter && ansLetter) {
+          return keyLetter === ansLetter;
+        }
+        return String(rawAns).trim().toLowerCase() === String(rawKey).trim().toLowerCase();
+      }
+
+      if (type === 'multiple') {
+        const userArr = Array.isArray(rawAns) ? rawAns : [rawAns];
+        const keyArr = Array.isArray(rawKey) ? rawKey : [rawKey];
+        const normUser = userArr.map(u => normalizeToLetter(u, question.options)).filter(Boolean).sort();
+        const normKey = keyArr.map(k => normalizeToLetter(k, question.options)).filter(Boolean).sort();
+        if (normUser.length === 0 || normKey.length === 0) return false;
+        return normUser.length === normKey.length && normUser.every((v, i) => v === normKey[i]);
+      }
+
+      if (type === 'true_false_table') {
+        const userMap = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
+        const keyMap = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
+        const keys = Object.keys(keyMap);
+        if (keys.length === 0) return false;
+        return keys.every(k => Boolean(userMap[k]) === Boolean(keyMap[k]));
+      }
+
+      if (type === 'matching') {
+        const userPairs = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
+        const keyPairs = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
+        const keys = Object.keys(keyPairs);
+        if (keys.length === 0) return false;
+        return keys.every(k => String(userPairs[k] ?? '').trim().toLowerCase() === String(keyPairs[k] ?? '').trim().toLowerCase());
+      }
+
+      if (type === 'short_answer' || type === 'isian') {
+        const userText = String(rawAns ?? '').trim().toLowerCase();
+        const accepted = Array.isArray(rawKey) ? rawKey : [rawKey];
+        return accepted.some(acc => String(acc ?? '').trim().toLowerCase() === userText);
+      }
+
+      return false;
+    }
+    window.isAnswerCorrect = isAnswerCorrect;
+
+    // ==============================================================
     // FITUR HAPUS SEKALIGUS (BULK DELETE) GURU SD
     // ==============================================================
     const selectedGuruItems = {
@@ -3868,19 +3978,39 @@
           const { data: rData } = await rQuery;
           if (Array.isArray(rData)) cloudResults = rData;
 
-          // Query answered questions count per session
+          let cloudAnswersList = [];
+          let cloudQuestions = [];
+          let cloudKeys = [];
+
+          // Query answered questions per session with payload
           if (cloudSessions.length > 0) {
             const sIds = cloudSessions.map(s => s.id);
             const { data: aData } = await window.supabase
               .from('student_answers')
-              .select('session_id')
+              .select('id, session_id, question_id, answer_payload, is_correct')
               .in('session_id', sIds);
             if (Array.isArray(aData)) {
+              cloudAnswersList = aData;
               aData.forEach(a => {
                 cloudAnswersCount[a.session_id] = (cloudAnswersCount[a.session_id] || 0) + 1;
               });
             }
           }
+
+          // Query questions & keys for accurate live auto-grade
+          try {
+            const { data: qData } = await window.supabase
+              .from('questions')
+              .select('id, exam_id, type, prompt, options, answer_key, points, competency, stimulus');
+            if (Array.isArray(qData)) cloudQuestions = qData;
+          } catch (qErr) {}
+
+          try {
+            const { data: kData } = await window.supabase
+              .from('question_keys')
+              .select('question_id, answer_key');
+            if (Array.isArray(kData)) cloudKeys = kData;
+          } catch (kErr) {}
 
           // Query profiles for class
           let pQuery = window.supabase
@@ -3894,6 +4024,16 @@
           console.warn('[renderGuruMonitoring] Cloud fetch notice:', fetchErr);
         }
       }
+
+      // Bangun peta soal lengkap untuk koreksi akurat
+      const allQuestionsMap = new Map();
+      const localSoals = (SicakapDB.getSoal && SicakapDB.getSoal()) || [];
+      localSoals.forEach(s => allQuestionsMap.set(String(s.id), s));
+      cloudQuestions.forEach(q => allQuestionsMap.set(String(q.id), { ...(allQuestionsMap.get(String(q.id)) || {}), ...q }));
+      cloudKeys.forEach(k => {
+        const existing = allQuestionsMap.get(String(k.question_id)) || {};
+        allQuestionsMap.set(String(k.question_id), { ...existing, answer_key: k.answer_key || existing.answer_key });
+      });
 
       // Gabungkan profil dari Supabase + localSiswas
       const studentMap = new Map();
@@ -3987,6 +4127,8 @@
       // Mapel filter dropdown
       const selectedMapel = document.getElementById('guru-livescore-mapel')?.value || 'ALL';
 
+      const monitoringRecapData = [];
+
       tbody.innerHTML = studentList.map(s => {
         // Cari session aktif siswa
         const session = cloudSessions.find(sess => sess.student_id === s.id || sess.profiles?.identifier === s.nisn);
@@ -4026,15 +4168,79 @@
         // Skor & Progres
         let skor = result ? Math.round(Number(result.score) || 0) : 0;
         let terjawab = session ? (cloudAnswersCount[session.id] || 0) : 0;
-        let totalSoal = result?.total_questions || (terjawab > 0 ? Math.max(terjawab, 10) : 10);
+        let totalSoal = result?.total_questions || (terjawab > 0 ? Math.max(terjawab, 5) : 5);
+        let benar = (result?.correct_count !== undefined && result?.correct_count !== null) ? Number(result.correct_count) : 0;
+        let salah = (result?.wrong_count !== undefined && result?.wrong_count !== null) ? Number(result.wrong_count) : Math.max(0, totalSoal - benar);
 
-        // Jika ada di SicakapDB liveScores lokal, jadikan fallback
+        // FALLBACK KOREKSI LANGSUNG (AUTO-GRADE) JIKA SKOR DI DB MASIH 0 PADAHAL SUDAH ADA JAWABAN:
+        const studentAnswers = session ? cloudAnswersList.filter(a => a.session_id === session.id) : [];
+        if (studentAnswers.length > 0 && (skor === 0 || !result || result.correct_count === null || result.correct_count === undefined)) {
+          let autoCorrect = 0;
+          let autoTotal = 0;
+          studentAnswers.forEach(ans => {
+            const qObj = allQuestionsMap.get(String(ans.question_id));
+            if (qObj) {
+              autoTotal++;
+              if (isAnswerCorrect(qObj, ans.answer_payload)) {
+                autoCorrect++;
+              }
+            }
+          });
+
+          if (autoTotal > 0) {
+            benar = autoCorrect;
+            totalSoal = Math.max(autoTotal, totalSoal);
+            salah = Math.max(0, totalSoal - autoCorrect);
+            skor = Math.round((autoCorrect / totalSoal) * 100);
+
+            // AUTO-HEAL: Simpan nilai yang benar ke Supabase agar tersimpan permanen
+            if (window.supabase && session) {
+              window.supabase.from('exam_results').upsert({
+                session_id: session.id,
+                school_id: session.school_id,
+                exam_id: session.exam_id,
+                student_id: s.id,
+                kelas: s.kelas || activeKelas,
+                subject: judulUjian,
+                score: skor,
+                total_questions: totalSoal,
+                correct_count: benar,
+                wrong_count: salah,
+                submitted_at: session.submitted_at || new Date().toISOString()
+              }, { onConflict: 'session_id' }).then(() => {});
+
+              window.supabase.from('exam_sessions')
+                .update({ score: skor })
+                .eq('id', session.id)
+                .then(() => {});
+            }
+          }
+        }
+
+        // Jika ada di SicakapDB liveScores lokal, jadikan fallback nilai jika masih 0
         const localLive = SicakapDB.getLiveScores().find(l => l.nisn === s.nisn);
-        if (!result && localLive) {
-          if (localLive.skor !== undefined) skor = localLive.skor;
+        if (skor === 0 && localLive && localLive.skor !== undefined && localLive.skor > 0) {
+          skor = localLive.skor;
           if (localLive.terjawab !== undefined) terjawab = localLive.terjawab;
           if (localLive.totalSoal) totalSoal = localLive.totalSoal;
+          if (localLive.benar !== undefined) benar = localLive.benar;
+          if (localLive.salah !== undefined) salah = localLive.salah;
         }
+
+        monitoringRecapData.push({
+          no: monitoringRecapData.length + 1,
+          nisn: s.nisn,
+          nama: s.nama,
+          rombel: s.kelas || activeKelas,
+          mapel: judulUjian,
+          terjawab: terjawab,
+          totalSoal: totalSoal,
+          benar: benar,
+          salah: salah,
+          skor: skor,
+          keterangan: skor >= 75 ? 'TUNTAS (KKTP ≥ 75)' : 'PERLU BIMBINGAN',
+          status: statusLabel.replace(/^[^\w]+/, '').trim()
+        });
 
         const isChecked = selectedGuruItems.monitoring.has(String(s.nisn));
         const sessionId = session?.id || '';
@@ -4058,7 +4264,7 @@
               <span class="inline-block px-2.5 py-0.5 rounded-lg bg-teal-50 border border-teal-200 font-mono font-black text-teal-800 text-xs">
                 ${skor} Poin
               </span>
-              <p class="text-[10px] text-slate-400 font-semibold mt-0.5">${terjawab}/${totalSoal} Soal</p>
+              <p class="text-[10px] text-slate-500 font-bold mt-0.5">${terjawab}/${totalSoal} Soal • <span class="text-emerald-600 font-bold">${benar} Benar</span></p>
             </td>
             <td class="py-3.5 px-4 text-center">
               <span class="px-2.5 py-1 rounded-full text-[11px] ${statusBadge}">
@@ -4886,7 +5092,8 @@
       let supabaseQuestionId = editId;
       try {
         if (window.supabase) {
-          // Payload questions (TANPA kunci jawaban!)
+          // Payload questions
+          const keyDirect = tipe === 'single' ? (document.getElementById('soal-kunci-single')?.value || 'A') : (answerKeyPayload?.correct || kunciDisplay || 'A');
           const questionRow = {
             school_id: schoolId,
             exam_id: examId,
@@ -4897,7 +5104,8 @@
             media_urls: uploadedMediaList,
             prompt: pertanyaan,
             options: optionsPayload,
-            points: points
+            points: points,
+            answer_key: keyDirect
           };
 
           const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(editId);
@@ -5460,8 +5668,38 @@
     }
 
     function exportGuruLiveScoreExcel() {
-      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 1';
+      const activeKelas = window.__ACTIVE_GURU_KELAS__ || window.__SICAKAP_USER__?.profile?.kelas || window.__SICAKAP_USER__?.profile?.class_name || 'Kelas 5';
       const mapel = document.getElementById('guru-livescore-mapel') ? document.getElementById('guru-livescore-mapel').value : 'Matematika SD';
+
+      const dataToExport = (Array.isArray(window.__LATEST_MONITORING_RECAP__) && window.__LATEST_MONITORING_RECAP__.length > 0)
+        ? window.__LATEST_MONITORING_RECAP__
+        : null;
+
+      if (dataToExport && typeof XLSX !== 'undefined') {
+        const rows = dataToExport.map((item, idx) => ({
+          'No': idx + 1,
+          'NISN': item.nisn || '-',
+          'Nama Siswa': item.nama || '-',
+          'Rombel / Kelas': item.rombel || activeKelas,
+          'Mata Pelajaran': item.mapel || mapel,
+          'Terjawab': item.terjawab,
+          'Total Soal': item.totalSoal,
+          'Jumlah Benar': item.benar,
+          'Jumlah Salah': item.salah,
+          'Nilai / Skor': item.skor,
+          'Keterangan': item.keterangan,
+          'Status': item.status
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Rekap_Nilai_Live');
+        const filename = `Rekap_Nilai_${activeKelas.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        XLSX.writeFile(wb, filename);
+        showToast('✅ Rekap nilai live berhasil diekspor ke Excel (.xlsx)!', 'success');
+        return;
+      }
+
       if (window.SicakapExport) {
         SicakapExport.exportExcelLiveScores({ mapel: mapel, rombelId: activeKelas, kelas: activeKelas });
       } else {

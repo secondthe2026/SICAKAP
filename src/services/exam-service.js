@@ -203,12 +203,131 @@ export async function fetchExamQuestions(examId, sessionId, { shuffleQuestions, 
   if (shuffleOptions && list.length > 0) {
     list = list.map((q) => {
       if (['single', 'multiple'].includes(q.type) && Array.isArray(q.options)) {
-        return { ...q, options: seededShuffle(q.options, `${sessionId}-${q.id}`) };
+        const tagged = q.options.map((opt, idx) => ({
+          ...opt,
+          originalKey: (typeof opt === 'object' && opt.key) ? opt.key : (['A', 'B', 'C', 'D', 'E'][idx] || String(idx)),
+          originalIndex: idx
+        }));
+        const shuffled = seededShuffle(tagged, `${sessionId}-${q.id}`);
+        return {
+          ...q,
+          options: shuffled.map((opt, idx) => ({
+            ...opt,
+            key: opt.originalKey, // nilai jawaban tetap sesuai kunci asli
+            displayKey: ['A', 'B', 'C', 'D', 'E'][idx] || String(idx) // tampilan visual tetap urut A, B, C, D
+          }))
+        };
       }
       return q;
     });
   }
   return list;
+}
+
+export function isAnswerCorrect(question, studentAnswer) {
+  if (!question || !studentAnswer) return false;
+
+  const type = question.type || 'single';
+
+  // 1. Ekstrak Kunci Jawaban
+  let rawKey = question.answer_key ?? question.correct_answer ?? question.kunci ?? question.kunci_jawaban ?? question.correct_index ?? question.correct;
+  if (rawKey && typeof rawKey === 'object' && !Array.isArray(rawKey)) {
+    if (rawKey.correct !== undefined) rawKey = rawKey.correct;
+    else if (rawKey.accepted !== undefined) rawKey = rawKey.accepted;
+    else if (rawKey.key !== undefined) rawKey = rawKey.key;
+    else if (rawKey.value !== undefined) rawKey = rawKey.value;
+  }
+
+  // 2. Ekstrak Jawaban Siswa
+  let rawAns = studentAnswer;
+  if (studentAnswer && typeof studentAnswer === 'object' && !Array.isArray(studentAnswer)) {
+    if (studentAnswer.selected !== undefined) rawAns = studentAnswer.selected;
+    else if (studentAnswer.value !== undefined) rawAns = studentAnswer.value;
+    else if (studentAnswer.selectedKey !== undefined) rawAns = studentAnswer.selectedKey;
+    else if (studentAnswer.text !== undefined) rawAns = studentAnswer.text;
+    else if (studentAnswer.answers !== undefined) rawAns = studentAnswer.answers;
+    else if (studentAnswer.pairs !== undefined) rawAns = studentAnswer.pairs;
+    else if (studentAnswer.answer !== undefined) rawAns = studentAnswer.answer;
+  }
+
+  // Helper normalisasi huruf / indeks
+  function normalizeToLetter(val, options) {
+    if (val === null || val === undefined) return '';
+    const s = String(val).trim();
+    if (!s) return '';
+
+    // Jika angka 0..4 -> 'A'..'E'
+    if (/^[0-4]$/.test(s)) {
+      return String.fromCharCode(65 + parseInt(s, 10));
+    }
+
+    // Jika format prefix seperti "A." atau "A)" atau "(A)"
+    const m = s.match(/^\(?([A-Ea-e])[\.\)\:\s]/);
+    if (m) return m[1].toUpperCase();
+
+    // Jika huruf tunggal A-E
+    if (s.length === 1 && /^[A-Ea-e]$/.test(s)) {
+      return s.toUpperCase();
+    }
+
+    // Jika mencocokkan teks opsi
+    if (Array.isArray(options)) {
+      const sLower = s.toLowerCase();
+      for (let i = 0; i < options.length; i++) {
+        const opt = options[i];
+        const optText = (typeof opt === 'string' ? opt : (opt.text || opt.label || '')).trim().toLowerCase();
+        if (optText && (optText === sLower || sLower.includes(optText))) {
+          const optKey = (typeof opt === 'object' && (opt.originalKey || opt.key)) ? (opt.originalKey || opt.key) : String.fromCharCode(65 + i);
+          return String(optKey).toUpperCase();
+        }
+      }
+    }
+
+    return s.toUpperCase();
+  }
+
+  // 3. Evaluasi berdasarkan tipe soal
+  if (type === 'single' || type === 'mcq' || type === 'pg' || !type) {
+    const keyLetter = normalizeToLetter(rawKey, question.options);
+    const ansLetter = normalizeToLetter(rawAns, question.options);
+    if (keyLetter && ansLetter) {
+      return keyLetter === ansLetter;
+    }
+    return String(rawAns).trim().toLowerCase() === String(rawKey).trim().toLowerCase();
+  }
+
+  if (type === 'multiple') {
+    const userArr = Array.isArray(rawAns) ? rawAns : [rawAns];
+    const keyArr = Array.isArray(rawKey) ? rawKey : [rawKey];
+    const normUser = userArr.map(u => normalizeToLetter(u, question.options)).filter(Boolean).sort();
+    const normKey = keyArr.map(k => normalizeToLetter(k, question.options)).filter(Boolean).sort();
+    if (normUser.length === 0 || normKey.length === 0) return false;
+    return normUser.length === normKey.length && normUser.every((v, i) => v === normKey[i]);
+  }
+
+  if (type === 'true_false_table') {
+    const userMap = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
+    const keyMap = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
+    const keys = Object.keys(keyMap);
+    if (keys.length === 0) return false;
+    return keys.every(k => Boolean(userMap[k]) === Boolean(keyMap[k]));
+  }
+
+  if (type === 'matching') {
+    const userPairs = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
+    const keyPairs = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
+    const keys = Object.keys(keyPairs);
+    if (keys.length === 0) return false;
+    return keys.every(k => String(userPairs[k] ?? '').trim().toLowerCase() === String(keyPairs[k] ?? '').trim().toLowerCase());
+  }
+
+  if (type === 'short_answer' || type === 'isian') {
+    const userText = String(rawAns ?? '').trim().toLowerCase();
+    const accepted = Array.isArray(rawKey) ? rawKey : [rawKey];
+    return accepted.some(acc => String(acc ?? '').trim().toLowerCase() === userText);
+  }
+
+  return false;
 }
 
 export async function logViolation({ sessionId, schoolId, actorId, eventType, details = {}, currentCount = 0 }) {
@@ -252,87 +371,129 @@ export async function submitExamToServer(sessionId, finalAnswers = []) {
   // Direct persistence to Supabase: exam_sessions & exam_results + SicakapDB live score sync
   try {
     if (sessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
-      // 1. Update status sesi menjadi 'submitted'
-      await supabase
-        .from('exam_sessions')
-        .update({
-          status: 'submitted',
-          submitted_at: nowIso,
-        })
-        .eq('id', sessionId);
-
-      // 2. Query info sesi untuk hitung nilai
+      // 1. Query info sesi untuk hitung nilai
       const { data: sess } = await supabase
         .from('exam_sessions')
         .select('*, exams(*), profiles(*)')
         .eq('id', sessionId)
         .maybeSingle();
 
-      if (sess) {
-        const examId = sess.exam_id;
-        const schoolId = sess.school_id;
-        const studentId = sess.student_id;
-        const p = sess.profiles;
-        const e = sess.exams;
+      const examId = sess?.exam_id;
+      const schoolId = sess?.school_id;
+      const studentId = sess?.student_id;
+      const p = sess?.profiles;
+      const e = sess?.exams;
 
-        // Ambil kunci jawaban
-        const { data: qKeys } = await supabase
+      // 2. Kumpulkan ID soal dari finalAnswers & dari student_answers DB jika finalAnswers kosong
+      let effectiveAnswers = Array.isArray(finalAnswers) ? [...finalAnswers] : [];
+      if (effectiveAnswers.length === 0) {
+        const { data: dbAnswers } = await supabase
+          .from('student_answers')
+          .select('question_id, answer_payload')
+          .eq('session_id', sessionId);
+        if (Array.isArray(dbAnswers)) effectiveAnswers = dbAnswers;
+      }
+
+      const qIds = effectiveAnswers.map(a => a.question_id).filter(Boolean);
+
+      // 3. Ambil data soal & kunci jawaban dari DB (questions & question_keys)
+      let questionsList = [];
+      if (qIds.length > 0) {
+        const { data: qByIds } = await supabase
           .from('questions')
-          .select('id, answer_key')
+          .select('id, exam_id, type, prompt, options, answer_key, points, competency, stimulus')
+          .in('id', qIds);
+        if (Array.isArray(qByIds)) questionsList = qByIds;
+      }
+      if (questionsList.length === 0 && examId) {
+        const { data: qByExam } = await supabase
+          .from('questions')
+          .select('id, exam_id, type, prompt, options, answer_key, points, competency, stimulus')
           .eq('exam_id', examId);
+        if (Array.isArray(qByExam)) questionsList = qByExam;
+      }
 
-        const keyMap = {};
-        (qKeys || []).forEach(q => {
-          if (q.answer_key) keyMap[q.id] = String(q.answer_key).trim().toUpperCase();
-        });
+      let keysList = [];
+      if (qIds.length > 0) {
+        const { data: kData } = await supabase
+          .from('question_keys')
+          .select('question_id, answer_key')
+          .in('question_id', qIds);
+        if (Array.isArray(kData)) keysList = kData;
+      }
 
-        let correct = 0;
-        let wrong = 0;
-        const total = (qKeys && qKeys.length > 0) ? qKeys.length : finalAnswers.length;
+      // Gabungkan dengan bank soal lokal SicakapDB
+      const localSoals = (typeof window !== 'undefined' && window.SicakapDB?.getSoal()) || [];
+      const qMap = new Map();
+      localSoals.forEach(s => qMap.set(String(s.id), s));
+      questionsList.forEach(q => qMap.set(String(q.id), { ...(qMap.get(String(q.id)) || {}), ...q }));
+      keysList.forEach(k => {
+        const existing = qMap.get(String(k.question_id)) || {};
+        qMap.set(String(k.question_id), { ...existing, answer_key: k.answer_key || existing.answer_key });
+      });
 
-        finalAnswers.forEach(ans => {
-          const qid = ans.question_id;
-          const chosen = (ans.answer_payload?.value || ans.answer_payload?.selectedKey || ans.answer_payload || '').toString().trim().toUpperCase();
-          const expected = keyMap[qid];
-          if (expected && chosen) {
-            if (chosen === expected) correct++;
-            else wrong++;
-          }
-        });
+      // 4. Koreksi setiap jawaban siswa menggunakan isAnswerCorrect
+      let correct = 0;
+      let wrong = 0;
+      const total = Math.max(qMap.size, effectiveAnswers.length, 1);
 
-        const score = total > 0 ? Math.round((correct / total) * 100) : 0;
-        const kelas = p?.kelas || p?.class_name || e?.kelas || 'Kelas 5';
-        const subject = e?.subject || e?.title || 'Asesmen CBT SD';
-
-        // 3. Upsert ke public.exam_results
-        await supabase.from('exam_results').upsert({
-          session_id: sessionId,
-          school_id: schoolId,
-          exam_id: examId,
-          student_id: studentId,
-          kelas: kelas,
-          subject: subject,
-          score: score,
-          total_questions: total,
-          correct_count: correct,
-          wrong_count: wrong,
-          submitted_at: nowIso,
-        }, { onConflict: 'session_id' });
-
-        // 4. Update SicakapDB Live Scores agar proktor/guru langsung melihat update di dashboard
-        if (typeof window !== 'undefined' && window.SicakapDB) {
-          window.SicakapDB.syncLiveScoreFromSession({
-            nisn: p?.identifier || sessionStorage.getItem('sicakap_nisn') || '0084928192',
-            jadwalId: examId,
-            mapel: subject,
-            sisaDetik: 0,
-            isLocked: false,
-            jawabanMap: finalAnswers.reduce((acc, curr) => {
-              acc[curr.question_id] = curr.answer_payload?.value || curr.answer_payload?.selectedKey || curr.answer_payload;
-              return acc;
-            }, {})
-          });
+      effectiveAnswers.forEach(ans => {
+        const qidStr = String(ans.question_id || '');
+        const qObj = qMap.get(qidStr) || { id: qidStr, type: 'single' };
+        const ansPayload = ans.answer_payload !== undefined ? ans.answer_payload : ans;
+        if (isAnswerCorrect(qObj, ansPayload)) {
+          correct++;
+        } else {
+          wrong++;
         }
+      });
+
+      const score = Math.round((correct / total) * 100);
+      const kelas = p?.kelas || p?.class_name || e?.kelas || 'Kelas 5';
+      const subject = e?.subject || e?.title || 'Asesmen CBT SD';
+
+      // 5. Update status sesi menjadi 'submitted' & simpan score
+      await supabase
+        .from('exam_sessions')
+        .update({
+          status: 'submitted',
+          submitted_at: nowIso,
+          score: score
+        })
+        .eq('id', sessionId);
+
+      // 6. Upsert ke public.exam_results
+      await supabase.from('exam_results').upsert({
+        session_id: sessionId,
+        school_id: schoolId,
+        exam_id: examId,
+        student_id: studentId,
+        kelas: kelas,
+        subject: subject,
+        score: score,
+        total_questions: total,
+        correct_count: correct,
+        wrong_count: wrong,
+        submitted_at: nowIso,
+      }, { onConflict: 'session_id' });
+
+      // 7. Update SicakapDB Live Scores agar proktor/guru langsung melihat update di dashboard
+      if (typeof window !== 'undefined' && window.SicakapDB) {
+        window.SicakapDB.syncLiveScoreFromSession({
+          nisn: p?.identifier || sessionStorage.getItem('sicakap_nisn') || '0084928192',
+          jadwalId: examId,
+          mapel: subject,
+          sisaDetik: 0,
+          isLocked: false,
+          skor: score,
+          benar: correct,
+          salah: wrong,
+          totalSoal: total,
+          jawabanMap: effectiveAnswers.reduce((acc, curr) => {
+            acc[curr.question_id] = curr.answer_payload?.value || curr.answer_payload?.selectedKey || curr.answer_payload?.selected || curr.answer_payload;
+            return acc;
+          }, {})
+        });
       }
     }
   } catch (dbSyncErr) {
