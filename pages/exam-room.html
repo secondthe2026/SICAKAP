@@ -2,9 +2,9 @@
 <html lang="id" class="h-full bg-slate-100">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Ruang Ujian CBT | SI-CAKAP v2.0</title>
-  <meta name="description" content="Ruang Ujian Komputer Berbasis Kompetensi Akademik (CBT) SI-CAKAP dengan Deteksi Pindah Tab & Auto-Save IndexedDB." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Ruang Ujian CBT Siswa | SI-CAKAP SD/MI</title>
+  <meta name="description" content="Ruang Ujian Asesmen Berbasis Komputer & Handphone (CBT) SI-CAKAP SD/MI Mobile-First." />
 
   <!-- Google Fonts: Nunito, Plus Jakarta Sans & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,19 +14,457 @@
   <!-- Local Tailwind CSS Build -->
   <link rel="stylesheet" href="/src/styles/main.css" />
 
-  <!-- Tailwind CSS CDN -->
-
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Impeccable LocalStorage Data Persistence Layer -->
   <script src="/assets/js/sicakap-db.js"></script>
   <script type="module" src="/src/services/data-store.js"></script>
-  <!-- Route Guard & RBAC Session Enforcement -->
+
+  <style>
+    /* Prevent text selection during exam */
+    .no-select {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    /* Safe touch targets */
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  </style>
+</head>
+<body class="h-full bg-slate-100 text-slate-800 flex flex-col font-sans overflow-x-hidden no-select">
+
+  <!-- ================= 1. STICKY TOP HEADER CBT (MOBILE-FIRST) ================= -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-2xs">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2">
+      
+      <!-- Kiri: Kop Kabupaten & Sekolah Ringkas (Compact) -->
+      <div id="header-kop-compact" class="flex-1 min-w-0 pr-1">
+        <!-- Rendered dynamically by SchoolKop component -->
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🏫</span>
+          <div class="min-w-0">
+            <p class="font-black text-xs sm:text-sm text-slate-900 truncate">SI-CAKAP CBT</p>
+            <p class="text-[10px] text-slate-500 font-bold truncate hidden sm:block">Ruang Asesmen Siswa SD</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kanan: Status Sync, Timer, Nav Soal Mobile & Alat Aksesibilitas -->
+      <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        
+        <!-- Status Koneksi Sync -->
+        <div id="sync-status-badge" class="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+          <span id="sync-indicator-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="sync-status" class="hidden xs:inline">🟢 Online</span>
+        </div>
+
+        <!-- Tombol Ragu Header Cepat -->
+        <button type="button" id="header-btn-doubt" onclick="toggleDoubt()" class="hidden md:flex items-center gap-1 px-2.5 py-1 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold transition cursor-pointer" title="Tandai ragu-ragu">
+          <span>🤔</span>
+          <span id="header-doubt-label">Ragu</span>
+        </button>
+
+        <!-- Timer Hitung Mundur Server -->
+        <div id="timer-box" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-900 text-amber-400 font-mono font-black text-xs sm:text-sm shadow-xs border border-slate-800 shrink-0">
+          <i data-lucide="clock" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400"></i>
+          <span id="exam-timer">--:--:--</span>
+        </div>
+
+        <!-- Tombol Nomor Soal di Mobile (Membuka Bottom Sheet Grid) -->
+        <button type="button" id="btn-open-drawer" onclick="toggleMobileDrawer()" class="lg:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-700 border border-indigo-200 font-black text-xs transition cursor-pointer" title="Daftar Nomor Soal">
+          <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+          <span id="drawer-counter" class="font-mono">1/--</span>
+        </button>
+
+        <!-- Tombol Layar Penuh -->
+        <button type="button" onclick="toggleFullscreen()" class="p-1.5 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition hidden sm:inline-flex cursor-pointer" title="Layar Penuh">
+          <i data-lucide="maximize" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ================= 2. WORKSPACE UTAMA UJIAN ================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto flex gap-6 px-3 sm:px-6 pt-3 sm:pt-5 overflow-x-hidden">
+
+    <!-- KOLOM KIRI: AREA SOAL & OPSI JAWABAN (MOBILE-FIRST) -->
+    <div class="flex-1 max-w-3xl mx-auto w-full pb-28 min-h-[calc(100vh-140px)] flex flex-col space-y-3 sm:space-y-4">
+      
+      <!-- Subheader Info Soal & Kontrol Huruf -->
+      <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+        <div class="flex items-center gap-2 min-w-0">
+          <span id="badge-question-num" class="px-2.5 py-1 rounded-xl bg-indigo-600 text-white font-mono font-black text-xs shrink-0 shadow-xs">
+            SOAL NO. 1
+          </span>
+          <span id="competency-badge" class="text-[11px] sm:text-xs font-bold text-slate-600 truncate">
+            Kompetensi Akademik SD
+          </span>
+        </div>
+
+        <!-- Kontrol Ukuran Font Soal (A11y Ramah SD) -->
+        <div class="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-xl shrink-0">
+          <button type="button" data-font-size="font-size-small" class="px-2 py-0.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-white transition cursor-pointer" title="Huruf Kecil">A-</button>
+          <button type="button" data-font-size="font-size-normal" class="px-2 py-0.5 rounded-lg text-xs font-black text-indigo-900 bg-white shadow-2xs cursor-pointer" title="Huruf Normal">A</button>
+          <button type="button" data-font-size="font-size-large" class="px-2 py-0.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-white transition cursor-pointer" title="Huruf Besar">A+</button>
+          <button type="button" data-action="toggle-contrast" class="p-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition cursor-pointer" title="Mode Kontras">
+            <i data-lucide="sun-moon" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Container Soal (Dirender oleh question-renderer.js) -->
+      <div id="active-question-card" class="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 sm:p-7 shadow-xs space-y-4 sm:space-y-5">
+        <!-- Skeleton Loading -->
+        <div class="space-y-3 animate-pulse">
+          <div class="h-4 bg-slate-200 rounded-md w-3/4"></div>
+          <div class="h-20 bg-slate-100 rounded-2xl w-full"></div>
+          <div class="space-y-2 pt-2">
+            <div class="h-12 bg-slate-100 rounded-2xl w-full"></div>
+            <div class="h-12 bg-slate-100 rounded-2xl w-full"></div>
+            <div class="h-12 bg-slate-100 rounded-2xl w-full"></div>
+            <div class="h-12 bg-slate-100 rounded-2xl w-full"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- KOLOM KANAN: SIDEBAR DAFTAR NOMOR SOAL (DESKTOP LG:BLOCK) -->
+    <aside class="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-16 h-fit bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-black text-sm text-slate-900 flex items-center gap-1.5">
+            <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-600"></i>
+            <span>Navigasi Soal</span>
+          </h3>
+          <p id="total-question-text" class="text-[11px] text-slate-400 font-bold">40 Soal</p>
+        </div>
+        <span id="progress-indicator" class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-mono font-bold text-xs border border-emerald-200">
+          0/-- Terisi
+        </span>
+      </div>
+
+      <!-- Legend Warna Status Soal -->
+      <div class="grid grid-cols-3 gap-1.5 text-[10px] text-center font-bold">
+        <div class="p-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 truncate">
+          ✓ Dijawab
+        </div>
+        <div class="p-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 truncate">
+          🤔 Ragu
+        </div>
+        <div class="p-1.5 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 truncate">
+          Belum
+        </div>
+      </div>
+
+      <!-- Grid Tombol Nomor Soal (5 Kolom) -->
+      <div id="desktop-grid" class="grid grid-cols-5 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+        <!-- Rendered by accessibility.js renderQuestionNav -->
+      </div>
+
+      <!-- Tombol Selesai Ujian Desktop -->
+      <div class="pt-3 border-t border-slate-100">
+        <button type="button" onclick="openFinishModal()" class="w-full py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 active:scale-98 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition cursor-pointer">
+          <i data-lucide="check-circle" class="w-4 h-4"></i>
+          <span>Kumpulkan Ujian</span>
+        </button>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ================= 3. BAR NAVIGASI STICKY BAWAH (MOBILE-FIRST) ================= -->
+  <footer class="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-xl p-2.5 sm:p-3 pb-safe">
+    <div class="max-w-3xl mx-auto grid grid-cols-3 gap-2 sm:gap-3">
+      
+      <!-- Tombol Sebelumnya -->
+      <button type="button" id="btn-prev" onclick="prevQuestion()" class="min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl bg-white border border-slate-200 text-slate-700 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 hover:bg-slate-50 active:scale-95 transition cursor-pointer shadow-2xs">
+        <i data-lucide="arrow-left" class="w-4 h-4 shrink-0"></i>
+        <span>Sebelumnya</span>
+      </button>
+
+      <!-- Tombol Ragu-ragu -->
+      <button type="button" id="btn-doubt" onclick="toggleDoubt()" class="min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 hover:bg-amber-100/70 active:scale-95 transition cursor-pointer shadow-2xs">
+        <span>🤔</span>
+        <span id="doubt-text" class="truncate">Masih Ragu</span>
+      </button>
+
+      <!-- Tombol Selanjutnya / Selesai -->
+      <button type="button" id="btn-next" onclick="nextQuestion()" class="min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer shadow-md shadow-sky-500/20">
+        <span id="next-text" class="truncate">Selanjutnya</span>
+        <i data-lucide="arrow-right" class="w-4 h-4 shrink-0"></i>
+      </button>
+
+    </div>
+  </footer>
+
+  <!-- ================= 4. BOTTOM SHEET DRAWER NAVIGASI SOAL DI HP ================= -->
+  <div id="mobile-drawer" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-end lg:hidden hidden">
+    <div class="w-full bg-white rounded-t-3xl max-h-[85vh] flex flex-col p-4 sm:p-5 space-y-3 shadow-2xl animate-in slide-in-from-bottom duration-200">
+      
+      <!-- Drag handle -->
+      <div class="w-12 h-1.5 bg-slate-300 rounded-full mx-auto -mt-1 mb-1"></div>
+
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <i data-lucide="layout-grid" class="w-4 h-4 text-indigo-600"></i>
+          <h3 class="font-black text-sm text-slate-900">Daftar Nomor Soal</h3>
+          <span id="progress-indicator-mobile" class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-mono text-[11px] font-bold">
+            Pilih Soal
+          </span>
+        </div>
+        <button type="button" onclick="closeMobileDrawer()" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Legend Status -->
+      <div class="grid grid-cols-3 gap-2 text-[10px] text-center font-bold py-1">
+        <div class="p-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+          ✓ Sudah Dijawab
+        </div>
+        <div class="p-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-300">
+          🤔 Ragu-ragu
+        </div>
+        <div class="p-1 rounded-xl bg-slate-50 text-slate-600 border border-slate-200">
+          Belum Dijawab
+        </div>
+      </div>
+
+      <!-- Grid 5 Kolom Tombol Nomor Soal Touch-Friendly -->
+      <div id="mobile-grid" class="grid grid-cols-5 gap-2 overflow-y-auto max-h-[50vh] p-1">
+        <!-- Rendered by accessibility.js renderQuestionNav -->
+      </div>
+
+      <!-- Tombol Aksi Kumpulkan di Bawah Drawer -->
+      <div class="pt-2 border-t border-slate-100 flex items-center gap-2 pb-safe">
+        <button type="button" onclick="closeMobileDrawer()" class="flex-1 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+          Tutup
+        </button>
+        <button type="button" onclick="openFinishModal(); closeMobileDrawer();" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i>
+          <span>Kumpulkan Ujian</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 5. LOBI RUANG UJIAN & INPUT TOKEN SISWA ================= -->
+  <div id="modal-token-entry" class="fixed inset-0 z-50 bg-slate-100 overflow-y-auto p-3 sm:p-6 flex items-center justify-center">
+    <div class="max-w-2xl w-full bg-white rounded-3xl border border-slate-200 p-5 sm:p-7 shadow-2xl space-y-4 my-auto animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Kop Kabupaten & Sekolah Versi Lengkap Resmi -->
+      <div id="lobby-kop-container">
+        <!-- Injected dynamically by generateSchoolKopHtml -->
+      </div>
+
+      <div class="text-center space-y-1">
+        <span class="inline-block px-3 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-black tracking-wide">
+          RUANG ASESMEN CBT SISWA
+        </span>
+        <h1 class="text-lg sm:text-xl font-black text-slate-900">Konfirmasi Peserta &amp; Token Ujian</h1>
+        <p class="text-xs text-slate-500">Periksa biodata Anda dan masukkan 6 karakter token sebelum memulai.</p>
+      </div>
+
+      <!-- Card Identitas Peserta Ujian -->
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200/60">
+          <span class="text-slate-500 font-medium">Nama Lengkap Peserta:</span>
+          <span id="token-modal-student-name" class="font-black text-slate-900 text-sm">Ahmad Rizky Pratama</span>
+        </div>
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200/60">
+          <span class="text-slate-500 font-medium">NISN / Rombel:</span>
+          <span id="token-modal-student-nisn" class="font-mono font-bold text-slate-800">0084928192 • Kelas 5 SD</span>
+        </div>
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200/60">
+          <span class="text-slate-500 font-medium">Mata Asesmen:</span>
+          <span id="token-modal-exam-title" class="font-bold text-sky-800">Literasi &amp; Numerasi SD</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 font-medium">Durasi Ujian:</span>
+          <span id="token-modal-exam-duration" class="font-mono font-bold text-slate-800">60 Menit</span>
+        </div>
+      </div>
+
+      <!-- Daftar Jadwal Asesmen Aktif (Mobile 1 Col, Desktop 2 Col) -->
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-slate-700">Pilihan Jadwal Ujian Tersedia:</label>
+        <div id="lobby-schedule-cards" class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <!-- Populated from SicakapDB or Supabase -->
+        </div>
+      </div>
+
+      <!-- Input Token Ujian 6 Karakter -->
+      <div class="space-y-2 pt-2 border-t border-slate-100">
+        <label class="block text-xs font-bold text-slate-700 text-center">Masukkan 6 Karakter Token Ujian</label>
+        <div class="max-w-xs mx-auto">
+          <input type="text" id="input-token-code" maxlength="6" placeholder="C K P 2 6 A"
+                 class="w-full text-center py-3 min-h-[44px] rounded-2xl border-2 border-sky-300 focus:border-sky-500 focus:ring-4 focus:ring-sky-100 font-mono text-base font-black tracking-widest uppercase text-sky-900 bg-sky-50/40 focus:outline-none transition" />
+          <p id="token-error-msg" class="text-xs text-rose-600 font-bold text-center mt-1 hidden"></p>
+        </div>
+      </div>
+
+      <!-- Tombol Mulai Ujian Touch-Friendly -->
+      <button type="button" id="btn-start-exam"
+              class="w-full py-3.5 min-h-[48px] rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs sm:text-sm shadow-md shadow-sky-500/25 flex items-center justify-center gap-2 transition cursor-pointer active:scale-98">
+        <i data-lucide="play" class="w-4 h-4"></i>
+        <span>MULAI KERJAKAN UJIAN SEKARANG (FULLSCREEN)</span>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ================= 6. LAYAR SELESAI UJIAN / SUCCESS OVERLAY ================= -->
+  <div id="success-overlay" class="fixed inset-0 z-50 bg-slate-100 overflow-y-auto p-3 sm:p-6 flex items-center justify-center hidden">
+    <div class="max-w-2xl w-full bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xl space-y-5 text-center my-auto animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Kop Kabupaten & Sekolah Resmi Versi Lengkap -->
+      <div id="success-kop-container">
+        <!-- Injected dynamically by generateSchoolKopHtml -->
+      </div>
+
+      <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-3xl">
+        ✓
+      </div>
+
+      <div class="space-y-1">
+        <span class="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black tracking-wide">
+          UJIAN BERHASIL DIKUMPULKAN
+        </span>
+        <h2 class="text-xl sm:text-2xl font-black text-slate-900">Jawaban Anda Berhasil Disimpan di Cloud</h2>
+        <p class="text-xs text-slate-500">Terima kasih telah menyelesaikan ujian dengan jujur dan tepat waktu.</p>
+      </div>
+
+      <!-- Card Bukti Ujian -->
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs text-left max-w-md mx-auto">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200/60">
+          <span class="text-slate-500 font-medium">Nomor Bukti (Receipt):</span>
+          <span id="success-receipt-num" class="font-mono font-black text-sky-800 text-xs sm:text-sm">RCP-2026-XXXX</span>
+        </div>
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200/60">
+          <span class="text-slate-500 font-medium">Nama Peserta:</span>
+          <span id="success-student-name" class="font-bold text-slate-900">Ahmad Rizky Pratama</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 font-medium">Status Pengiriman:</span>
+          <span class="font-bold text-emerald-600">✓ Tersinkronisasi ke Server</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-col sm:flex-row items-center gap-2.5 max-w-md mx-auto pt-2">
+        <button type="button" id="btn-print-receipt" class="w-full py-3 min-h-[44px] rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center justify-center gap-2 cursor-pointer shadow-2xs">
+          <i data-lucide="printer" class="w-4 h-4 text-indigo-600"></i>
+          <span>Cetak Bukti Ujian</span>
+        </button>
+        <button type="button" onclick="window.signOutAndRedirect()" class="w-full py-3 min-h-[44px] rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-600/20">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+          <span>Selesai &amp; Keluar</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= 7. MODAL KONFIRMASI SELESAI UJIAN ================= -->
+  <div id="finish-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <div class="text-center space-y-1">
+        <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-xl">
+          ⚠️
+        </div>
+        <h3 class="font-black text-base text-slate-900">Kumpulkan Lembar Jawaban?</h3>
+        <p class="text-xs text-slate-500">Periksa kembali rekap status pengerjaan soal Anda sebelum mengirim.</p>
+      </div>
+
+      <!-- Ringkasan Status Soal -->
+      <div class="grid grid-cols-3 gap-2 text-center text-xs">
+        <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+          <p class="text-[10px] font-bold text-emerald-600">Sudah Dijawab</p>
+          <p id="recap-answered" class="text-xl font-black mt-1">0</p>
+        </div>
+        <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900">
+          <p class="text-[10px] font-bold text-amber-600">Ragu-ragu</p>
+          <p id="recap-doubt" class="text-xl font-black mt-1">0</p>
+        </div>
+        <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900">
+          <p class="text-[10px] font-bold text-rose-600">Belum Dijawab</p>
+          <p id="recap-unanswered" class="text-xl font-black mt-1">0</p>
+        </div>
+      </div>
+
+      <p class="text-[11px] text-slate-500 text-center leading-relaxed">
+        Setelah menekan tombol kirim, Anda tidak dapat mengubah jawaban lagi.
+      </p>
+
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+        <button type="button" onclick="dismissFinishModal()" class="py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-600 hover:bg-slate-50 cursor-pointer">
+          Periksa Lagi
+        </button>
+        <button type="button" onclick="submitExamFinal()" class="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/20 cursor-pointer">
+          Ya, Kumpulkan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 8. MODAL PERINGATAN PINDAH TAB / FULLSCREEN ================= -->
+  <div id="tab-warning-modal" class="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+    <div class="max-w-sm w-full bg-white rounded-3xl border-2 border-rose-400 p-6 space-y-4 shadow-2xl text-center animate-in shake duration-200">
+      <div class="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-2xl">
+        🚨
+      </div>
+      <div class="space-y-1">
+        <h3 class="font-black text-base text-slate-900">Peringatan Integritas Ujian!</h3>
+        <p class="text-xs text-rose-700 font-bold leading-relaxed">
+          Anda terdeteksi keluar dari layar ujian atau membuka aplikasi lain!
+        </p>
+        <p id="tab-warning-count" class="text-[11px] font-mono text-slate-500 font-bold mt-1">
+          Peringatan Ke-1 dari Maksimal 3 Kali
+        </p>
+      </div>
+      <button type="button" onclick="dismissTabWarning()" class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md shadow-rose-600/20 cursor-pointer">
+        Saya Mengerti &amp; Kembali Ujian
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= 9. MODAL UJIAN TERKUNCI (BUTUH PIN PROKTOR) ================= -->
+  <div id="exam-locked-modal" class="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="max-w-sm w-full bg-white rounded-3xl border-2 border-slate-300 p-6 space-y-4 shadow-2xl text-center animate-in zoom-in-95 duration-200">
+      <div class="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-3xl">
+        🔒
+      </div>
+      <div class="space-y-1">
+        <h3 class="font-black text-base text-slate-900">Layar Ujian Terkunci</h3>
+        <p class="text-xs text-slate-600 leading-relaxed">
+          Pelanggaran melebihi batas yang diizinkan. Silakan lapor ke Guru / Proktor untuk membuka kembali sesi Anda.
+        </p>
+      </div>
+      <div class="space-y-2">
+        <input type="password" id="proktor-pin" maxlength="6" placeholder="PIN Proktor (4 Digit)"
+               class="w-full text-center py-2.5 rounded-xl border border-slate-300 font-mono font-black text-sm tracking-widest focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+        <p id="pin-error" class="text-xs text-rose-600 font-bold hidden">PIN Proktor tidak cocok!</p>
+      </div>
+      <button type="button" onclick="unlockByProktor()" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs cursor-pointer">
+        Buka Kunci Sesi
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= SCRIPT LOGIK CBT SISWA ================= -->
   <script type="module">
     import { requireRole } from '/src/lib/guard.js';
     import { CBTEngine } from '/src/engines/cbt-engine.js';
     import { renderQuestion } from '/src/engines/question-renderer.js';
     import { initExamAccessibility, renderQuestionNav, hasFilledAnswer } from '/src/engines/accessibility.js';
+    import { getActiveSchoolProfile, generateSchoolKopHtml } from '/src/components/school-kop.js';
+    import { getCurrentUserProfile, signOutAndRedirect } from '/src/lib/supabase.js';
+
+    window.signOutAndRedirect = signOutAndRedirect;
 
     requireRole(['siswa']);
 
@@ -35,6 +473,7 @@
     let activeQuestionIndex = 0;
     let totalQuestionsCount = 0;
     let activeAllAnswers = {};
+    let activeSchoolData = null;
 
     // Inisialisasi CBTEngine dengan Hooks UI
     engine = new CBTEngine({
@@ -111,6 +550,8 @@
         if (studentEl) studentEl.textContent = receiptData.studentName;
         const receiptEl = document.getElementById('success-receipt-num');
         if (receiptEl) receiptEl.textContent = receiptData.receipt_number;
+        const overlay = document.getElementById('success-overlay');
+        if (overlay) overlay.classList.remove('hidden');
         lucide.createIcons();
       },
       onSubmitError: (errMsg) => {
@@ -128,21 +569,17 @@
       if (!badge || !text) return;
 
       if (status === 'online') {
-        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all';
+        badge.className = 'flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold transition-all';
         if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
         text.textContent = '🟢 Online';
       } else if (status === 'syncing') {
-        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold transition-all';
+        badge.className = 'flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold transition-all';
         if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-ping';
         text.textContent = '⚡ Menyimpan...';
-      } else if (status === 'offline') {
-        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all';
-        if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500';
-        text.textContent = '🔴 Offline (Tersimpan Lokal)';
       } else {
-        badge.className = 'flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold transition-all';
+        badge.className = 'flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all';
         if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500';
-        text.textContent = '⚠️ Gagal Sync';
+        text.textContent = '🔴 Offline';
       }
     }
 
@@ -185,6 +622,10 @@
       if (progressEl) {
         progressEl.textContent = `${filledCount}/${questionsList.length} Terisi`;
       }
+      const progressMobile = document.getElementById('progress-indicator-mobile');
+      if (progressMobile) {
+        progressMobile.textContent = `${filledCount}/${questionsList.length} Terisi`;
+      }
     }
 
     // ================= 3. UPDATE DOUBT / RAGU-RAGU UI =================
@@ -195,15 +636,15 @@
       const headerLabel = document.getElementById('header-doubt-label');
 
       if (isFlagged) {
-        if (bottomBtn) bottomBtn.className = 'h-12 px-3.5 sm:px-6 rounded-2xl border-2 border-amber-500 bg-amber-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 cursor-pointer';
+        if (bottomBtn) bottomBtn.className = 'min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl border-2 border-amber-500 bg-amber-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer';
         if (bottomText) bottomText.textContent = '✓ Ditandai Ragu';
-        if (headerBtn) headerBtn.className = 'px-2.5 py-1 rounded-xl border border-amber-500 bg-amber-500 text-white text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs';
+        if (headerBtn) headerBtn.className = 'hidden md:flex items-center gap-1 px-2.5 py-1 rounded-xl border border-amber-500 bg-amber-500 text-white text-xs font-black transition cursor-pointer shadow-xs';
         if (headerLabel) headerLabel.textContent = 'Ragu (Aktif)';
       } else {
-        if (bottomBtn) bottomBtn.className = 'h-12 px-3.5 sm:px-6 rounded-2xl border-2 border-amber-300 hover:border-amber-400 bg-amber-50 text-amber-800 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-2xs hover:bg-amber-100/70 transition active:scale-95 cursor-pointer';
-        if (bottomText) bottomText.textContent = '🤔 Masih Ragu';
-        if (headerBtn) headerBtn.className = 'px-2.5 py-1 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs';
-        if (headerLabel) headerLabel.textContent = 'Ragu-ragu';
+        if (bottomBtn) bottomBtn.className = 'min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 hover:bg-amber-100/70 active:scale-95 transition cursor-pointer shadow-2xs';
+        if (bottomText) bottomText.textContent = 'Masih Ragu';
+        if (headerBtn) headerBtn.className = 'hidden md:flex items-center gap-1 px-2.5 py-1 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold transition cursor-pointer shadow-xs';
+        if (headerLabel) headerLabel.textContent = 'Ragu';
       }
     }
 
@@ -222,11 +663,11 @@
       }
 
       if (index === total - 1) {
-        nextText.textContent = '✅ Selesai & Kumpulkan';
-        nextBtn.className = 'h-12 px-4 sm:px-7 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-95 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-emerald-500/25 transition cursor-pointer';
+        nextText.textContent = 'Kumpulkan';
+        nextBtn.className = 'min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-95 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/25 transition cursor-pointer';
       } else {
-        nextText.textContent = 'Soal Berikutnya ➡';
-        nextBtn.className = 'h-12 px-4 sm:px-7 rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 active:scale-95 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-sky-500/25 transition cursor-pointer';
+        nextText.textContent = 'Selanjutnya';
+        nextBtn.className = 'min-h-[44px] h-11 sm:h-12 px-2 sm:px-4 rounded-2xl bg-gradient-to-r from-sky-500 via-sky-600 to-blue-600 hover:from-sky-600 hover:to-blue-700 active:scale-95 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/25 transition cursor-pointer';
       }
     }
 
@@ -278,7 +719,13 @@
 
     // ================= 7. MOBILE DRAWER & FULLSCREEN =================
     window.toggleMobileDrawer = () => {
-      document.getElementById('mobile-drawer')?.classList.toggle('hidden');
+      const drawer = document.getElementById('mobile-drawer');
+      if (drawer) {
+        drawer.classList.toggle('hidden');
+        if (!drawer.classList.contains('hidden')) {
+          updateNavGrids(activeQuestionIndex, activeAllAnswers);
+        }
+      }
       lucide.createIcons();
     };
 
@@ -306,43 +753,83 @@
       }
     };
 
+    // Quick select schedule in lobby
+    window.selectExamSchedule = (token, title, duration) => {
+      const tokenInput = document.getElementById('input-token-code');
+      if (tokenInput) tokenInput.value = token;
+      const modTitle = document.getElementById('token-modal-exam-title');
+      if (modTitle) modTitle.textContent = title;
+      const modDur = document.getElementById('token-modal-exam-duration');
+      if (modDur) modDur.textContent = duration + ' Menit';
+      sessionStorage.setItem('sicakap_token', token);
+      sessionStorage.setItem('sicakap_mapel', title);
+      sessionStorage.setItem('sicakap_durasi', duration);
+    };
+
     // ================= 8. PRINT RECEIPT BUTTON =================
     const printBtn = document.getElementById('btn-print-receipt');
     if (printBtn) {
       printBtn.onclick = () => engine.printReceipt();
     }
 
-    // ================= 9. TOKEN MODAL & START =================
-    window.addEventListener('DOMContentLoaded', () => {
-      // Inisialisasi Accessibility Preferences (Font size scaling & High Contrast)
+    // ================= 9. INITIALIZATION & KOP SYNC =================
+    window.addEventListener('DOMContentLoaded', async () => {
       initExamAccessibility();
-
       lucide.createIcons();
 
-      // Pre-fill student info from Supabase profile or session
-      const authProfile = window.__SICAKAP_USER__?.profile;
-      const studentName = authProfile?.full_name || sessionStorage.getItem('sicakap_name') || 'Siswa SD';
-      const studentNisn = authProfile?.nisn || sessionStorage.getItem('sicakap_nisn') || '0084928192';
-      const studentKelas = authProfile?.kelas || authProfile?.class_name || 'Kelas 5';
-      const examTitle = sessionStorage.getItem('sicakap_mapel') || `Asesmen CBT SD • ${studentKelas}`;
-      const examDuration = (sessionStorage.getItem('sicakap_durasi') || '60') + ' Menit';
-      const initialToken = sessionStorage.getItem('sicakap_token') || 'CKP26A';
+      // 1. Ambil data session & profil sekolah aktif
+      let studentName = 'Peserta Didik';
+      let studentNisn = '0084928192';
+      let studentKelas = 'Kelas 5';
+      let examTitle = sessionStorage.getItem('sicakap_mapel') || 'Literasi & Numerasi SD';
+      let examDuration = (sessionStorage.getItem('sicakap_durasi') || '60') + ' Menit';
+      let initialToken = sessionStorage.getItem('sicakap_token') || 'CKP26A';
 
-      const nameEl = document.getElementById('student-name');
-      if (nameEl) nameEl.textContent = studentName;
-      const nisnEl = document.getElementById('student-nisn');
-      if (nisnEl) nisnEl.textContent = `NISN: ${studentNisn} • ${studentKelas}`;
-      const mapelEl = document.getElementById('mapel-title');
-      if (mapelEl) mapelEl.textContent = examTitle;
-      const initialsEl = document.getElementById('user-initials');
-      if (initialsEl) {
-        initialsEl.textContent = studentName.split(' ').map(n => n[0]).slice(0, 2).join('');
+      try {
+        const session = await getCurrentUserProfile();
+        if (session?.profile) {
+          window.__SICAKAP_USER__ = session;
+          const p = session.profile;
+          studentName = p.full_name || studentName;
+          studentNisn = p.identifier || p.nisn || studentNisn;
+          studentKelas = p.kelas || p.class_name || studentKelas;
+
+          if (p.schools) {
+            activeSchoolData = p.schools;
+            window.__ACTIVE_SCHOOL_PROFILE__ = p.schools;
+          } else if (p.school_id) {
+            activeSchoolData = await getActiveSchoolProfile(p.school_id);
+          }
+        }
+      } catch (authErr) {
+        console.warn('[ExamRoom] Session error:', authErr);
       }
 
+      if (!activeSchoolData) {
+        activeSchoolData = await getActiveSchoolProfile();
+      }
+
+      // 2. Render Kop Kabupaten & Sekolah di 3 Tempat (Kop Ringkas, Lobi Lengkap, Selesai Lengkap)
+      const compactKopEl = document.getElementById('header-kop-compact');
+      if (compactKopEl) {
+        compactKopEl.innerHTML = generateSchoolKopHtml(activeSchoolData, { compact: true });
+      }
+
+      const lobbyKopEl = document.getElementById('lobby-kop-container');
+      if (lobbyKopEl) {
+        lobbyKopEl.innerHTML = generateSchoolKopHtml(activeSchoolData, { compact: false });
+      }
+
+      const successKopEl = document.getElementById('success-kop-container');
+      if (successKopEl) {
+        successKopEl.innerHTML = generateSchoolKopHtml(activeSchoolData, { compact: false });
+      }
+
+      // 3. Pre-fill student info di Lobi Modal
       const modName = document.getElementById('token-modal-student-name');
       if (modName) modName.textContent = studentName;
       const modNisn = document.getElementById('token-modal-student-nisn');
-      if (modNisn) modNisn.textContent = studentNisn;
+      if (modNisn) modNisn.textContent = `${studentNisn} • ${studentKelas}`;
       const modTitle = document.getElementById('token-modal-exam-title');
       if (modTitle) modTitle.textContent = examTitle;
       const modDur = document.getElementById('token-modal-exam-duration');
@@ -350,6 +837,29 @@
       const tokenInput = document.getElementById('input-token-code');
       if (tokenInput) tokenInput.value = initialToken;
 
+      // 4. Render Daftar Jadwal Ujian Aktif di Lobi
+      const scheduleCardsEl = document.getElementById('lobby-schedule-cards');
+      if (scheduleCardsEl && window.SicakapDB) {
+        const jadwals = window.SicakapDB.getJadwal ? window.SicakapDB.getJadwal() : [];
+        const activeJadwals = jadwals.filter(j => j.status === 'Aktif' || !j.status);
+        if (activeJadwals.length > 0) {
+          scheduleCardsEl.innerHTML = activeJadwals.map(j => `
+            <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 hover:border-sky-300 transition text-left space-y-1 cursor-pointer active:scale-98" onclick="selectExamSchedule('${j.token || 'CKP26A'}', '${j.namaUlangan || j.mapel || 'Asesmen CBT SD'}', '${j.durasiMenit || 60}')">
+              <div class="flex items-center justify-between">
+                <span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">Aktif</span>
+                <span class="text-[10px] font-mono text-slate-500">${j.durasiMenit || 60} Menit</span>
+              </div>
+              <p class="font-black text-xs text-slate-900 truncate">${j.namaUlangan || j.mapel || 'Ulangan Harian'}</p>
+              <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                <span>Token: <strong class="font-mono text-sky-700">${j.token || 'CKP26A'}</strong></span>
+                <span class="text-sky-600 font-bold hover:underline">Pilih ➡</span>
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+
+      // 5. Handler Mulai Ujian (Boot CBTEngine)
       const startBtn = document.getElementById('btn-start-exam');
       if (startBtn) {
         startBtn.onclick = async () => {
@@ -377,7 +887,8 @@
           } catch (err) {
             console.error('[SICAKAP Boot Error]:', err);
             startBtn.disabled = false;
-            startBtn.innerHTML = '<span>🚀 MULAI KERJAKAN UJIAN SEKARANG (FULLSCREEN)</span>';
+            startBtn.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i><span>MULAI KERJAKAN UJIAN SEKARANG (FULLSCREEN)</span>';
+            lucide.createIcons();
             if (errEl) {
               errEl.textContent = '❌ ' + (err.message || 'Token Ujian salah atau sesi gagal dimulai.');
               errEl.classList.remove('hidden');
