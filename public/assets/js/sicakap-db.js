@@ -1036,7 +1036,7 @@
             grade_level: jadwal.kelas || jadwal.rombelId || '5',
             duration_minutes: Number(jadwal.durasi) || 60,
             token_code: jadwal.token,
-            status: jadwal.status === 'Aktif' ? 'published' : 'draft',
+            status: (jadwal.status === 'Aktif' || jadwal.status === 'active') ? 'active' : 'draft',
             starts_at: jadwal.tanggal ? new Date(jadwal.tanggal).toISOString() : new Date().toISOString()
           }]).then(({ error }) => {
             if (error) console.warn('[SicakapDB] Supabase addJadwal error:', error);
@@ -1063,7 +1063,7 @@
           }
           if (updatedFields.durasi) patch.duration_minutes = Number(updatedFields.durasi);
           if (updatedFields.token) patch.token_code = updatedFields.token;
-          if (updatedFields.status) patch.status = updatedFields.status === 'Aktif' ? 'published' : 'draft';
+          if (updatedFields.status) patch.status = (updatedFields.status === 'Aktif' || updatedFields.status === 'active') ? 'active' : 'draft';
           patch.updated_at = new Date().toISOString();
 
           window.supabase.from('exams').update(patch).eq('id', id).then(() => {

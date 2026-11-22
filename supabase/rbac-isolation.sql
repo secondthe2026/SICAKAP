@@ -1252,5 +1252,150 @@ ADD COLUMN IF NOT EXISTS email TEXT,
 ADD COLUMN IF NOT EXISTS phone TEXT,
 ADD COLUMN IF NOT EXISTS initial_password TEXT;
 
+-- ============================================================================
+-- PENGUATAN RLS LENGKAP UNTUK ROLE GURU (ANTI-BLOKIR & OPERASIONAL SEKOLAH)
+-- ============================================================================
+ALTER TABLE public.questions ALTER COLUMN exam_id DROP NOT NULL;
+
+DO $$
+BEGIN
+    -- 1. PROFILES: Guru dapat SELECT seluruh profil sekolahnya (guru & siswa)
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'profiles' AND policyname = 'guru_select_school_profiles'
+    ) THEN
+        CREATE POLICY "guru_select_school_profiles" ON public.profiles
+          FOR SELECT USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    -- Guru dapat mengelola data siswa di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'profiles' AND policyname = 'guru_manage_school_students'
+    ) THEN
+        CREATE POLICY "guru_manage_school_students" ON public.profiles
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+            AND role::text = 'siswa'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+            AND role::text = 'siswa'
+          );
+    END IF;
+
+    -- 2. CLASSES: Guru dapat SELECT & mengelola rombel di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'classes' AND policyname = 'guru_select_school_classes'
+    ) THEN
+        CREATE POLICY "guru_select_school_classes" ON public.classes
+          FOR SELECT USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'classes' AND policyname = 'guru_manage_school_classes'
+    ) THEN
+        CREATE POLICY "guru_manage_school_classes" ON public.classes
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    -- 3. EXAMS: Guru dapat mengelola ujian di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'exams' AND policyname = 'guru_manage_school_exams'
+    ) THEN
+        CREATE POLICY "guru_manage_school_exams" ON public.exams
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    -- 4. QUESTIONS & QUESTION_KEYS: Guru dapat mengelola bank soal di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'questions' AND policyname = 'guru_manage_school_questions'
+    ) THEN
+        CREATE POLICY "guru_manage_school_questions" ON public.questions
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'question_keys' AND policyname = 'guru_manage_school_question_keys'
+    ) THEN
+        CREATE POLICY "guru_manage_school_question_keys" ON public.question_keys
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    -- 5. EXAM_SESSIONS: Guru dapat melihat live score dan mereset sesi murid di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'exam_sessions' AND policyname = 'guru_manage_school_sessions'
+    ) THEN
+        CREATE POLICY "guru_manage_school_sessions" ON public.exam_sessions
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+
+    -- 6. EXAM_RESULTS: Guru dapat melihat dan mengelola hasil ujian di sekolahnya
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'exam_results' AND policyname = 'guru_manage_school_results'
+    ) THEN
+        CREATE POLICY "guru_manage_school_results" ON public.exam_results
+          FOR ALL USING (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id() 
+            AND public.get_my_role() = 'guru'
+          );
+    END IF;
+END $$;
+
+
 
 
