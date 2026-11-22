@@ -1121,3 +1121,19 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.check_school_registration_status TO authenticated, anon;
+
+-- ============================================================================
+-- PROFIL SEKOLAH & KOP RESMI DOKUMEN (KABUPATEN, DINAS, LOGO RESMI)
+-- ============================================================================
+ALTER TABLE public.schools 
+ADD COLUMN IF NOT EXISTS nama_pemda TEXT DEFAULT 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH',
+ADD COLUMN IF NOT EXISTS nama_dinas TEXT DEFAULT 'DINAS PENDIDIKAN',
+ADD COLUMN IF NOT EXISTS logo_kabupaten_url TEXT,
+ADD COLUMN IF NOT EXISTS logo_url TEXT,
+ADD COLUMN IF NOT EXISTS nss TEXT,
+ADD COLUMN IF NOT EXISTS alamat TEXT,
+ADD COLUMN IF NOT EXISTS kepala_sekolah TEXT,
+ADD COLUMN IF NOT EXISTS nip_kepsek TEXT,
+ADD COLUMN IF NOT EXISTS tahun_pelajaran TEXT DEFAULT '2026/2027',
+ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'Semester Ganjil';
+

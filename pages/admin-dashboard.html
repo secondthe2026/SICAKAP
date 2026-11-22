@@ -869,25 +869,37 @@
             </div>
 
             <form onsubmit="handleSaveProfilSekolah(event)" class="space-y-4 text-xs">
+              <!-- Hirarki Instansi Induk (Kabupaten & Dinas) -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Nama Pemerintah Daerah / Kabupaten</label>
+                  <input type="text" id="profil-nama-pemda" oninput="updateLogoPreviewFromInput()" placeholder="Contoh: PEMERINTAH KABUPATEN HULU SUNGAI TENGAH" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 uppercase focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Nama Dinas / Instansi Induk</label>
+                  <input type="text" id="profil-nama-dinas" oninput="updateLogoPreviewFromInput()" placeholder="Contoh: DINAS PENDIDIKAN" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 font-bold text-slate-800 uppercase focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                </div>
+              </div>
+
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Nama Lengkap Sekolah / Madrasah <span class="text-rose-500">*</span></label>
-                <input type="text" id="profil-nama-sekolah" required placeholder="Masukkan nama resmi sekolah..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400" />
+                <input type="text" id="profil-nama-sekolah" oninput="updateLogoPreviewFromInput()" required placeholder="Masukkan nama resmi sekolah..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400" />
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label class="block font-bold text-slate-700 mb-1">NPSN (Nomor Pokok Sekolah Nasional) <span class="text-rose-500">*</span></label>
-                  <input type="text" id="profil-npsn" required placeholder="Contoh: 20104567" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                  <input type="text" id="profil-npsn" oninput="updateLogoPreviewFromInput()" required placeholder="Contoh: 20104567" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
                 </div>
                 <div>
                   <label class="block font-bold text-slate-700 mb-1">NSS (Nomor Statistik Sekolah)</label>
-                  <input type="text" id="profil-nss" placeholder="Contoh: 101056001001" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                  <input type="text" id="profil-nss" oninput="updateLogoPreviewFromInput()" placeholder="Contoh: 101056001001" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
                 </div>
               </div>
 
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Alamat Lengkap Satuan Pendidikan</label>
-                <textarea id="profil-alamat" rows="2" placeholder="Jalan, RT/RW, Kelurahan, Kecamatan, Kota/Kabupaten, Kode Pos" class="w-full p-3 rounded-xl border border-slate-200 font-medium text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 leading-relaxed"></textarea>
+                <textarea id="profil-alamat" oninput="updateLogoPreviewFromInput()" rows="2" placeholder="Jalan, RT/RW, Kelurahan, Kecamatan, Kota/Kabupaten, Kode Pos" class="w-full p-3 rounded-xl border border-slate-200 font-medium text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100 leading-relaxed"></textarea>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
@@ -915,21 +927,83 @@
                 </div>
               </div>
 
-              <!-- Logo Sekolah -->
-              <div class="space-y-2 pt-2 border-t border-slate-100">
-                <label class="block font-bold text-slate-700">Logo Resmi Sekolah (Kop Laporan &amp; Kartu Ujian)</label>
-                <div class="flex flex-col sm:flex-row items-center gap-3">
-                  <div class="flex-1 w-full">
-                    <input type="text" id="profil-logo-url" oninput="updateLogoPreviewFromInput()" placeholder="Tempel URL gambar logo (https://...)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono text-xs text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
-                  </div>
-                  <span class="text-xs text-slate-400 font-bold">atau</span>
-                  <label class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition">
-                    <i data-lucide="upload" class="w-3.5 h-3.5"></i>
-                    <span>Pilih File Gambar</span>
-                    <input type="file" id="profil-logo-file" accept="image/*" onchange="handleLogoFileUpload(this)" class="hidden" />
-                  </label>
+              <!-- 2 Blok Upload Logo Terpisah (Kiri Kop: Kabupaten & Kanan Kop: Sekolah) -->
+              <div class="pt-3 border-t border-slate-100 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <i data-lucide="image" class="w-4 h-4 text-indigo-600"></i>
+                    <span>Pengaturan Logo Kop Dokumen Resmi (Kiri &amp; Kanan)</span>
+                  </span>
+                  <span class="text-[10px] text-slate-400 font-medium">Auto-Kompres &lt;300px Base64</span>
                 </div>
-                <p class="text-[11px] text-slate-400 font-medium">Mendukung format JPG, PNG, WebP, SVG. Gambar otomatis dikonversi ke Base64 aman.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  <!-- Blok 1: Logo Kabupaten / Pemda (Kiri Kop) -->
+                  <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between">
+                      <label class="block font-bold text-slate-800 text-[11px]">
+                        Logo Kabupaten / Pemda <span class="text-indigo-600 font-semibold">(Kiri Kop)</span>
+                      </label>
+                      <span class="text-[9px] font-mono text-slate-400">logo_kabupaten_url</span>
+                    </div>
+
+                    <div class="flex items-center gap-2.5">
+                      <!-- Mini Preview -->
+                      <div id="profil-mini-kab-box" class="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                        <img id="profil-mini-kab-img" src="" alt="Logo Kabupaten" class="w-full h-full object-contain hidden" />
+                        <span id="profil-mini-kab-fallback" class="text-xl">🏛️</span>
+                      </div>
+
+                      <div class="flex-1 space-y-1.5 min-w-0">
+                        <input type="text" id="profil-logo-kabupaten-url" oninput="updateLogoPreviewFromInput()" placeholder="Tempel URL atau pilih file..." class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-[10px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                        <div class="flex items-center gap-1.5">
+                          <label class="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition">
+                            <i data-lucide="upload" class="w-3 h-3"></i>
+                            <span>Pilih Gambar</span>
+                            <input type="file" id="profil-logo-kabupaten-file" accept="image/*" onchange="handleCompressedImageUpload(this, 'profil-logo-kabupaten-url')" class="hidden" />
+                          </label>
+                          <button type="button" onclick="handleClearLogo('profil-logo-kabupaten-url', 'profil-logo-kabupaten-file')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 text-[10px] font-bold flex items-center gap-1 transition">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Blok 2: Logo Resmi Sekolah (Kanan Kop) -->
+                  <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between">
+                      <label class="block font-bold text-slate-800 text-[11px]">
+                        Logo Resmi Sekolah <span class="text-indigo-600 font-semibold">(Kanan Kop)</span>
+                      </label>
+                      <span class="text-[9px] font-mono text-slate-400">logo_url</span>
+                    </div>
+
+                    <div class="flex items-center gap-2.5">
+                      <!-- Mini Preview -->
+                      <div id="profil-mini-sekolah-box" class="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                        <img id="profil-mini-sekolah-img" src="" alt="Logo Sekolah" class="w-full h-full object-contain hidden" />
+                        <span id="profil-mini-sekolah-fallback" class="text-xl">🏫</span>
+                      </div>
+
+                      <div class="flex-1 space-y-1.5 min-w-0">
+                        <input type="text" id="profil-logo-url" oninput="updateLogoPreviewFromInput()" placeholder="Tempel URL atau pilih file..." class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-mono text-[10px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                        <div class="flex items-center gap-1.5">
+                          <label class="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 cursor-pointer transition">
+                            <i data-lucide="upload" class="w-3 h-3"></i>
+                            <span>Pilih Gambar</span>
+                            <input type="file" id="profil-logo-file" accept="image/*" onchange="handleCompressedImageUpload(this, 'profil-logo-url')" class="hidden" />
+                          </label>
+                          <button type="button" onclick="handleClearLogo('profil-logo-url', 'profil-logo-file')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 text-[10px] font-bold flex items-center gap-1 transition">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -950,20 +1024,36 @@
                 <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">Live Preview</span>
               </div>
 
-              <!-- Kop Dokumen Render Box -->
-              <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-center text-slate-800">
-                <div class="flex items-center justify-center gap-3">
-                  <div id="profil-preview-logo-box" class="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center overflow-hidden shrink-0">
-                    <img id="profil-preview-logo-img" src="" alt="Logo Sekolah" class="w-full h-full object-contain hidden" />
-                    <span id="profil-preview-logo-fallback" class="text-2xl">🏫</span>
+              <!-- Kop Dokumen Render Box (3 Kolom Resmi) -->
+              <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-slate-800">
+                <div class="flex items-center justify-between gap-2.5">
+                  <!-- Kiri: Logo Kabupaten -->
+                  <div id="preview-kop-kab-box" class="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                    <img id="preview-kop-kab-img" src="" alt="Logo Kabupaten" class="w-full h-full object-contain hidden" />
+                    <span id="preview-kop-kab-fallback" class="text-2xl">🏛️</span>
                   </div>
-                  <div class="text-left">
-                    <p class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">PEMERINTAH DAERAH / YAYASAN PENDIDIKAN</p>
-                    <h3 id="preview-kop-nama" class="font-black text-sm uppercase text-slate-900 tracking-wide">NAMA SATUAN PENDIDIKAN</h3>
-                    <p id="preview-kop-npsn" class="text-[10px] font-mono font-bold text-slate-600">NPSN: - • NSS: -</p>
+
+                  <!-- Tengah: Identitas Satuan Pendidikan Rata Tengah -->
+                  <div class="flex-1 text-center min-w-0 px-1">
+                    <p id="preview-kop-pemda" class="text-[9px] sm:text-[10px] uppercase font-bold text-slate-600 tracking-wider leading-tight">PEMERINTAH KABUPATEN HULU SUNGAI TENGAH</p>
+                    <p id="preview-kop-dinas" class="text-[9px] sm:text-[10px] uppercase font-bold text-slate-700 tracking-wider leading-tight">DINAS PENDIDIKAN</p>
+                    <h3 id="preview-kop-nama" class="font-black text-xs sm:text-sm uppercase text-slate-900 tracking-wide break-words mt-0.5 leading-snug">NAMA SATUAN PENDIDIKAN</h3>
+                    <p id="preview-kop-npsn" class="text-[9px] sm:text-[10px] font-mono font-bold text-slate-600 mt-0.5">NPSN: - • NSS: -</p>
+                    <p id="preview-kop-alamat" class="text-[8px] sm:text-[9px] text-slate-500 font-medium leading-relaxed break-words mt-0.5">Alamat satuan pendidikan belum dilengkapi</p>
+                  </div>
+
+                  <!-- Kanan: Logo Sekolah -->
+                  <div id="preview-kop-sekolah-box" class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                    <img id="preview-kop-sekolah-img" src="" alt="Logo Sekolah" class="w-full h-full object-contain hidden" />
+                    <span id="preview-kop-sekolah-fallback" class="text-2xl">🏫</span>
                   </div>
                 </div>
-                <div class="border-t-2 border-slate-900 my-1.5"></div>
+
+                <!-- Bawah: Garis Ganda Kop Resmi -->
+                <div class="w-full border-t-2 border-slate-900 mt-2 pt-0.5">
+                  <div class="w-full border-t border-slate-900"></div>
+                </div>
+              </div>
                 <p id="preview-kop-alamat" class="text-[10px] text-slate-600 font-medium leading-relaxed">
                   Alamat satuan pendidikan belum dilengkapi
                 </p>
@@ -3293,12 +3383,15 @@
               npsn: school.npsn || '',
               nss: school.nss || '',
               alamat: school.alamat || school.kabupaten || '',
+              namaPemda: school.nama_pemda || '',
+              namaDinas: school.nama_dinas || '',
               kepsekNama: school.kepala_sekolah || '',
               kepsek: school.kepala_sekolah || '',
               kepsekNip: school.nip_kepsek || '',
               nipKepsek: school.nip_kepsek || '',
               tahunPelajaran: school.tahun_pelajaran || '2026/2027',
               semester: school.semester || 'Semester Ganjil',
+              logoKabupatenUrl: school.logo_kabupaten_url || '',
               logoUrl: school.logo_url || '',
               logo: school.logo_url || '',
               kabupaten: school.kabupaten || '',
@@ -3335,6 +3428,8 @@
 
       if (!s) {
         // Tampilkan formulir bersih tanpa data demo SDN 1 Nusantara
+        setVal('profil-nama-pemda', 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH');
+        setVal('profil-nama-dinas', 'DINAS PENDIDIKAN');
         setVal('profil-nama-sekolah', '');
         setVal('profil-npsn', '');
         setVal('profil-nss', '');
@@ -3343,14 +3438,18 @@
         setVal('profil-kepsek-nip', '');
         setVal('profil-tahun-pelajaran', '2026/2027');
         setVal('profil-semester', 'Ganjil');
+        setVal('profil-logo-kabupaten-url', '');
         setVal('profil-logo-url', '');
 
         const badgeText = document.getElementById('profil-cloud-status-text');
         if (badgeText) badgeText.textContent = 'Supabase Cloud: Memuat...';
+        updateLogoPreviewFromInput();
         return;
       }
 
       // 1. Isi input formulir identitas
+      setVal('profil-nama-pemda', s.nama_pemda || 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH');
+      setVal('profil-nama-dinas', s.nama_dinas || 'DINAS PENDIDIKAN');
       setVal('profil-nama-sekolah', s.name || '');
       setVal('profil-npsn', s.npsn || '');
       setVal('profil-nss', s.nss || '');
@@ -3361,6 +3460,7 @@
 
       const semVal = (s.semester && s.semester.toLowerCase().includes('genap')) ? 'Genap' : 'Ganjil';
       setVal('profil-semester', semVal);
+      setVal('profil-logo-kabupaten-url', s.logo_kabupaten_url || '');
       setVal('profil-logo-url', s.logo_url || '');
 
       // 2. Header Update: Ganti 'Admin SDN 1 Nusantara' menjadi nama sekolah asli
@@ -3389,6 +3489,8 @@
       }
 
       // 4. Pratinjau Kop Dokumen Resmi (Live Preview)
+      setText('preview-kop-pemda', (s.nama_pemda || 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH').toUpperCase());
+      setText('preview-kop-dinas', (s.nama_dinas || 'DINAS PENDIDIKAN').toUpperCase());
       setText('preview-kop-nama', (s.name || 'NAMA SATUAN PENDIDIKAN').toUpperCase());
       setText('preview-kop-npsn', `NPSN: ${s.npsn || '-'} • NSS: ${s.nss || '-'}`);
       setText('preview-kop-alamat', s.alamat || s.kabupaten || 'Alamat satuan pendidikan belum dilengkapi');
@@ -3400,54 +3502,138 @@
       updateLogoPreviewFromInput();
     }
 
-    function updateLogoPreviewFromInput() {
-      const urlInput = document.getElementById('profil-logo-url');
-      const imgEl = document.getElementById('profil-preview-logo-img');
-      const fallbackEl = document.getElementById('profil-preview-logo-fallback');
-      const src = urlInput ? urlInput.value.trim() : '';
+    function setPreviewImg(imgId, fallbackId, url) {
+      const imgEl = document.getElementById(imgId);
+      const fallbackEl = document.getElementById(fallbackId);
+      if (!imgEl || !fallbackEl) return;
 
-      if (imgEl && fallbackEl) {
-        if (src) {
-          imgEl.src = src;
-          imgEl.onload = () => {
-            imgEl.classList.remove('hidden');
-            fallbackEl.classList.add('hidden');
-          };
-          imgEl.onerror = () => {
-            imgEl.classList.add('hidden');
-            fallbackEl.classList.remove('hidden');
-          };
-        } else {
-          imgEl.src = '';
+      if (url && typeof url === 'string' && url.trim().length > 0) {
+        imgEl.src = url.trim();
+        imgEl.onload = () => {
+          imgEl.classList.remove('hidden');
+          fallbackEl.classList.add('hidden');
+        };
+        imgEl.onerror = () => {
           imgEl.classList.add('hidden');
           fallbackEl.classList.remove('hidden');
-        }
+        };
+      } else {
+        imgEl.src = '';
+        imgEl.classList.add('hidden');
+        fallbackEl.classList.remove('hidden');
       }
     }
 
-    function handleLogoFileUpload(input) {
+    function updateLogoPreviewFromInput() {
+      const kabUrl = document.getElementById('profil-logo-kabupaten-url')?.value.trim() || '';
+      const sekolahUrl = document.getElementById('profil-logo-url')?.value.trim() || '';
+
+      // 1. Update Mini Previews di Formulir
+      setPreviewImg('profil-mini-kab-img', 'profil-mini-kab-fallback', kabUrl);
+      setPreviewImg('profil-mini-sekolah-img', 'profil-mini-sekolah-fallback', sekolahUrl);
+
+      // 2. Update Kop 3-Kolom Resmi di Panel Preview
+      setPreviewImg('preview-kop-kab-img', 'preview-kop-kab-fallback', kabUrl);
+      setPreviewImg('preview-kop-sekolah-img', 'preview-kop-sekolah-fallback', sekolahUrl);
+
+      // 3. Update Teks Kop Live
+      const pemdaVal = document.getElementById('profil-nama-pemda')?.value.trim() || 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH';
+      const dinasVal = document.getElementById('profil-nama-dinas')?.value.trim() || 'DINAS PENDIDIKAN';
+      const sekolahVal = document.getElementById('profil-nama-sekolah')?.value.trim() || 'NAMA SATUAN PENDIDIKAN';
+      const npsnVal = document.getElementById('profil-npsn')?.value.trim() || '-';
+      const nssVal = document.getElementById('profil-nss')?.value.trim() || '-';
+      const alamatVal = document.getElementById('profil-alamat')?.value.trim() || 'Alamat satuan pendidikan belum dilengkapi';
+
+      const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+
+      setText('preview-kop-pemda', pemdaVal.toUpperCase());
+      setText('preview-kop-dinas', dinasVal.toUpperCase());
+      setText('preview-kop-nama', sekolahVal.toUpperCase());
+      setText('preview-kop-npsn', `NPSN: ${npsnVal} • NSS: ${nssVal}`);
+      setText('preview-kop-alamat', alamatVal);
+    }
+
+    function handleCompressedImageUpload(input, targetInputId) {
       const file = input.files && input.files[0];
       if (!file) return;
 
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Ukuran file logo terlalu besar! Maksimal 2MB.');
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Ukuran file gambar terlalu besar! Maksimal 5MB sebelum kompresi.');
+        input.value = '';
         return;
       }
 
+      showToast('⏳ Mengompresi logo (<300px)...');
+
       const reader = new FileReader();
       reader.onload = function(e) {
-        const base64 = e.target.result;
-        const urlInput = document.getElementById('profil-logo-url');
-        if (urlInput) urlInput.value = base64;
-        updateLogoPreviewFromInput();
-        showToast('Logo sekolah berhasil dimuat!');
+        const rawSrc = e.target.result;
+        const img = new Image();
+        img.onload = function() {
+          const maxDim = 300;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w >= h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+
+          // WebP jika didukung, fallback PNG
+          let base64;
+          try {
+            base64 = canvas.toDataURL('image/webp', 0.85);
+            if (!base64.startsWith('data:image/webp')) {
+              base64 = canvas.toDataURL('image/png');
+            }
+          } catch (err) {
+            base64 = canvas.toDataURL('image/png');
+          }
+
+          const targetEl = document.getElementById(targetInputId);
+          if (targetEl) {
+            targetEl.value = base64;
+          }
+          updateLogoPreviewFromInput();
+          showToast('✅ Gambar logo berhasil dikompresi (<300px) & siap disimpan!');
+        };
+        img.onerror = function() {
+          alert('Format gambar tidak dapat dibaca oleh browser.');
+        };
+        img.src = rawSrc;
       };
       reader.readAsDataURL(file);
+    }
+
+    function handleClearLogo(inputId, fileInputId) {
+      const inp = document.getElementById(inputId);
+      if (inp) inp.value = '';
+      const fileInp = document.getElementById(fileInputId);
+      if (fileInp) fileInp.value = '';
+      updateLogoPreviewFromInput();
+      showToast('Logo dihapus.');
     }
 
     async function handleSaveProfilSekolah(e) {
       if (e) e.preventDefault();
 
+      const nama_pemda = document.getElementById('profil-nama-pemda')?.value.trim() || 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH';
+      const nama_dinas = document.getElementById('profil-nama-dinas')?.value.trim() || 'DINAS PENDIDIKAN';
       const namaSekolah = document.getElementById('profil-nama-sekolah')?.value.trim();
       const npsn = document.getElementById('profil-npsn')?.value.trim();
       const nss = document.getElementById('profil-nss')?.value.trim() || null;
@@ -3457,6 +3643,7 @@
       const tahun_pelajaran = document.getElementById('profil-tahun-pelajaran')?.value.trim() || '2026/2027';
       const semesterRaw = document.getElementById('profil-semester')?.value || 'Ganjil';
       const semester = semesterRaw === 'Genap' ? 'Semester Genap' : 'Semester Ganjil';
+      const logo_kabupaten_url = document.getElementById('profil-logo-kabupaten-url')?.value.trim() || null;
       const logo_url = document.getElementById('profil-logo-url')?.value.trim() || null;
 
       if (!namaSekolah || !npsn) {
@@ -3475,28 +3662,38 @@
         return;
       }
 
-      showToast('⏳ Menyimpan profil sekolah ke Supabase Cloud...');
+      showToast('⏳ Menyimpan profil sekolah & kop ke Supabase Cloud...');
 
       try {
+        const payload = {
+          name: namaSekolah,
+          npsn: npsn,
+          nss: nss,
+          alamat: alamat,
+          nama_pemda: nama_pemda,
+          nama_dinas: nama_dinas,
+          kepala_sekolah: kepala_sekolah,
+          nip_kepsek: nip_kepsek,
+          tahun_pelajaran: tahun_pelajaran,
+          semester: semester,
+          logo_kabupaten_url: logo_kabupaten_url,
+          logo_url: logo_url,
+          updated_at: new Date().toISOString()
+        };
+
         const { data, error } = await window.supabase
           .from('schools')
-          .update({
-            name: namaSekolah,
-            npsn: npsn,
-            nss: nss,
-            alamat: alamat,
-            kepala_sekolah: kepala_sekolah,
-            nip_kepsek: nip_kepsek,
-            tahun_pelajaran: tahun_pelajaran,
-            semester: semester,
-            logo_url: logo_url,
-            updated_at: new Date().toISOString()
-          })
+          .update(payload)
           .eq('id', schoolId)
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('[Admin] Gagal simpan profil ke Supabase:', error);
+          showToast(`❌ Gagal menyimpan ke Supabase: ${error.message}`);
+          alert(`Gagal menyimpan ke Supabase:\n${error.message}\n${error.details ? 'Detail: ' + error.details : ''}\n${error.hint ? 'Petunjuk: ' + error.hint : ''}\n\nPastikan kolom database sudah ditambahkan via migration SQL.`);
+          return;
+        }
 
         currentSchoolData = data;
         window.__ACTIVE_SCHOOL_PROFILE__ = data;
@@ -3507,22 +3704,26 @@
             npsn: data.npsn,
             nss: data.nss || '',
             alamat: data.alamat || '',
+            namaPemda: data.nama_pemda || '',
+            namaDinas: data.nama_dinas || '',
             kepsekNama: data.kepala_sekolah || '',
             kepsek: data.kepala_sekolah || '',
             kepsekNip: data.nip_kepsek || '',
             nipKepsek: data.nip_kepsek || '',
             tahunPelajaran: data.tahun_pelajaran || '2026/2027',
             semester: data.semester || 'Semester Ganjil',
+            logoKabupatenUrl: data.logo_kabupaten_url || '',
             logoUrl: data.logo_url || '',
             logo: data.logo_url || ''
           });
         }
 
         await renderProfilSekolah();
-        showToast('🏛️ Profil Sekolah berhasil disimpan ke Supabase Cloud!');
+        showToast('🏛️ Profil Sekolah & Kop Dokumen berhasil disimpan ke Supabase Cloud!');
       } catch (err) {
         console.error('[Admin] Gagal simpan profil ke Supabase:', err);
         showToast(`❌ Gagal menyimpan ke Supabase: ${err.message}`);
+        alert(`Terjadi kesalahan sistem saat menyimpan ke Supabase:\n${err.message}`);
       }
     }
 

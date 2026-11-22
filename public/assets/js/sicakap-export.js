@@ -19,11 +19,14 @@
       let npsn = '-';
       let nss = '-';
       let alamat = '';
+      let namaPemda = 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH';
+      let namaDinas = 'DINAS PENDIDIKAN';
       let kepsekNama = 'Kepala Sekolah';
       let kepsekNip = '-';
       let tahunAjaran = '2026/2027';
       let semester = 'Semester Ganjil';
       let logoUrl = '';
+      let logoKabupatenUrl = '';
 
       // Prioritas 1: Ambil dari objek profil sekolah aktif di session Supabase
       const liveSchool = window.__ACTIVE_SCHOOL_PROFILE__ || window.__ADMIN_SESSION__?.profile?.schools;
@@ -32,10 +35,13 @@
         if (liveSchool.npsn) npsn = liveSchool.npsn;
         if (liveSchool.nss) nss = liveSchool.nss;
         if (liveSchool.alamat || liveSchool.kabupaten) alamat = liveSchool.alamat || liveSchool.kabupaten;
+        if (liveSchool.nama_pemda) namaPemda = liveSchool.nama_pemda;
+        if (liveSchool.nama_dinas) namaDinas = liveSchool.nama_dinas;
         if (liveSchool.kepala_sekolah) kepsekNama = liveSchool.kepala_sekolah;
         if (liveSchool.nip_kepsek) kepsekNip = liveSchool.nip_kepsek;
         if (liveSchool.tahun_pelajaran) tahunAjaran = liveSchool.tahun_pelajaran;
         if (liveSchool.semester) semester = liveSchool.semester;
+        if (liveSchool.logo_kabupaten_url) logoKabupatenUrl = liveSchool.logo_kabupaten_url;
         if (liveSchool.logo_url) logoUrl = liveSchool.logo_url;
       } else if (typeof window.SicakapDB !== 'undefined') {
         const profil = window.SicakapDB.getProfilSekolah ? window.SicakapDB.getProfilSekolah() : null;
@@ -44,10 +50,13 @@
           if (profil.npsn) npsn = profil.npsn;
           if (profil.nss) nss = profil.nss;
           if (profil.alamat) alamat = profil.alamat;
+          if (profil.namaPemda) namaPemda = profil.namaPemda;
+          if (profil.namaDinas) namaDinas = profil.namaDinas;
           if (profil.kepsekNama || profil.kepsek) kepsekNama = profil.kepsekNama || profil.kepsek;
           if (profil.kepsekNip || profil.nipKepsek) kepsekNip = profil.kepsekNip || profil.nipKepsek;
           if (profil.tahunPelajaran) tahunAjaran = profil.tahunPelajaran;
           if (profil.semester) semester = profil.semester;
+          if (profil.logoKabupatenUrl) logoKabupatenUrl = profil.logoKabupatenUrl;
           if (profil.logoUrl || profil.logo) logoUrl = profil.logoUrl || profil.logo;
         }
       }
@@ -57,10 +66,13 @@
         npsn: npsn,
         nss: nss,
         alamat: alamat,
+        namaPemda: namaPemda,
+        namaDinas: namaDinas,
         kepsekNama: kepsekNama,
         kepsekNip: kepsekNip,
         tahunAjaran: tahunAjaran,
         semester: semester,
+        logoKabupatenUrl: logoKabupatenUrl,
         logoUrl: logoUrl
       };
     },
@@ -687,8 +699,8 @@
           <!-- ================= HALAMAN 1: BERITA ACARA UJIAN ================= -->
           <div class="sheet-page">
             <div class="kop-surat">
-              <h4>PEMERINTAH KABUPATEN / KOTA</h4>
-              <h3>DINAS PENDIDIKAN DAN KEBUDAYAAN</h3>
+              <h4>${(infoSekolah.namaPemda || 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH').toUpperCase()}</h4>
+              <h3>${(infoSekolah.namaDinas || 'DINAS PENDIDIKAN').toUpperCase()}</h3>
               <h2>${infoSekolah.sekolahNama}</h2>
               <p>${infoSekolah.alamat} • NPSN: ${infoSekolah.npsn}</p>
             </div>
@@ -771,8 +783,8 @@
           <!-- ================= HALAMAN 2: DAFTAR HADIR PESERTA UJIAN ================= -->
           <div class="sheet-page">
             <div class="kop-surat">
-              <h4>PEMERINTAH KABUPATEN / KOTA</h4>
-              <h3>DINAS PENDIDIKAN DAN KEBUDAYAAN</h3>
+              <h4>${(infoSekolah.namaPemda || 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH').toUpperCase()}</h4>
+              <h3>${(infoSekolah.namaDinas || 'DINAS PENDIDIKAN').toUpperCase()}</h3>
               <h2>${infoSekolah.sekolahNama}</h2>
               <p>${infoSekolah.alamat} • NPSN: ${infoSekolah.npsn}</p>
             </div>

@@ -161,6 +161,8 @@
       { id: 'MP-09', nama: 'Numerasi ANBK', icon: '📊', deskripsi: 'Asesmen Nasional Numerasi SD' }
     ],
     profilSekolah: {
+      namaPemda: 'PEMERINTAH KABUPATEN HULU SUNGAI TENGAH',
+      namaDinas: 'DINAS PENDIDIKAN',
       namaSekolah: '',
       npsn: '',
       nss: '',
@@ -169,6 +171,7 @@
       kepsekNip: '',
       tahunPelajaran: '2026/2027',
       semester: 'Semester Ganjil',
+      logoKabupatenUrl: '',
       logoUrl: ''
     },
     akunAdmin: {
