@@ -238,139 +238,166 @@
     syncFromCloud: async function (targetSchoolId) {
       if (typeof window === 'undefined' || !window.supabase) return;
       const schoolId = targetSchoolId || this.getActiveSchoolId();
-      if (!schoolId) return;
+      if (!schoolId) {
+        this.setCloudSyncStatus(this.isHydrated ? 'saved' : (navigator.onLine ? 'saved' : 'offline'));
+        return;
+      }
 
       this.setCloudSyncStatus('syncing');
 
       try {
         // 1. Fetch Profil Sekolah
-        const { data: school } = await window.supabase
-          .from('schools')
-          .select('*')
-          .eq('id', schoolId)
-          .maybeSingle();
+        try {
+          const { data: school } = await window.supabase
+            .from('schools')
+            .select('*')
+            .eq('id', schoolId)
+            .maybeSingle();
 
-        if (school) {
-          this.saveProfilSekolah({
-            id: school.id,
-            namaSekolah: school.name || '',
-            npsn: school.npsn || '',
-            nss: school.nss || '',
-            alamat: school.alamat || school.kabupaten || '',
-            namaPemda: school.nama_pemda || '',
-            namaDinas: school.nama_dinas || '',
-            kepsekNama: school.kepala_sekolah || '',
-            kepsekNip: school.nip_kepsek || '',
-            tahunPelajaran: school.tahun_pelajaran || '2026/2027',
-            semester: school.semester || 'Semester Ganjil',
-            logoKabupatenUrl: school.logo_kabupaten_url || '',
-            logoUrl: school.logo_url || '',
-            kabupaten: school.kabupaten || '',
-            jenjang: school.jenjang || 'SD'
-          });
+          if (school) {
+            this.saveProfilSekolah({
+              id: school.id,
+              namaSekolah: school.name || '',
+              npsn: school.npsn || '',
+              nss: school.nss || '',
+              alamat: school.alamat || school.kabupaten || '',
+              namaPemda: school.nama_pemda || '',
+              namaDinas: school.nama_dinas || '',
+              kepsekNama: school.kepala_sekolah || '',
+              kepsekNip: school.nip_kepsek || '',
+              tahunPelajaran: school.tahun_pelajaran || '2026/2027',
+              semester: school.semester || 'Semester Ganjil',
+              logoKabupatenUrl: school.logo_kabupaten_url || '',
+              logoUrl: school.logo_url || '',
+              kabupaten: school.kabupaten || '',
+              jenjang: school.jenjang || 'SD'
+            });
+          }
+        } catch (e1) {
+          console.warn('[SicakapDB] Sync school notice:', e1);
         }
 
         // 2. Fetch Guru
-        const { data: gurus, error: guruErr } = await window.supabase
-          .from('profiles')
-          .select('*')
-          .eq('school_id', schoolId)
-          .eq('role', 'guru')
-          .order('full_name', { ascending: true });
+        try {
+          const { data: gurus, error: guruErr } = await window.supabase
+            .from('profiles')
+            .select('*')
+            .eq('school_id', schoolId)
+            .eq('role', 'guru')
+            .order('full_name', { ascending: true });
 
-        if (!guruErr && Array.isArray(gurus)) {
-          const mappedGuru = gurus.map(g => ({
-            id: g.id,
-            nama: g.full_name,
-            nip: g.nip || g.identifier || '',
-            email: g.email || (g.identifier && g.identifier.includes('@') ? g.identifier : ''),
-            mapel: g.subject || '',
-            rombelWali: g.kelas || g.class_name || '',
-            kelas: g.kelas || g.class_name || '',
-            password: g.initial_password || '••••••••'
-          }));
-          this.write(KEYS.GURU, mappedGuru, true);
+          if (!guruErr && Array.isArray(gurus)) {
+            const mappedGuru = gurus.map(g => ({
+              id: g.id,
+              nama: g.full_name,
+              nip: g.nip || g.identifier || '',
+              email: g.email || (g.identifier && g.identifier.includes('@') ? g.identifier : ''),
+              mapel: g.subject || '',
+              rombelWali: g.kelas || g.class_name || '',
+              kelas: g.kelas || g.class_name || '',
+              password: g.initial_password || '••••••••'
+            }));
+            this.write(KEYS.GURU, mappedGuru, true);
+          }
+        } catch (e2) {
+          console.warn('[SicakapDB] Sync guru notice:', e2);
         }
 
         // 3. Fetch Classes / Rombel
-        const { data: classes } = await window.supabase
-          .from('classes')
-          .select('*')
-          .eq('school_id', schoolId)
-          .order('grade_level', { ascending: true });
+        try {
+          const { data: classes } = await window.supabase
+            .from('classes')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('grade_level', { ascending: true });
 
-        if (Array.isArray(classes)) {
-          const mappedRombel = classes.map(c => ({
-            id: c.id,
-            namaRombel: c.name,
-            tingkat: c.grade_level,
-            fase: c.phase || 'Fase A',
-            waliKelasId: c.homeroom_teacher_id || '',
-            jumlahSiswa: c.student_count || 0
-          }));
-          this.write(KEYS.ROMBEL, mappedRombel, true);
+          if (Array.isArray(classes)) {
+            const mappedRombel = classes.map(c => ({
+              id: c.id,
+              namaRombel: c.name,
+              tingkat: c.grade_level,
+              fase: c.phase || 'Fase A',
+              waliKelasId: c.homeroom_teacher_id || '',
+              jumlahSiswa: c.student_count || 0
+            }));
+            this.write(KEYS.ROMBEL, mappedRombel, true);
+          }
+        } catch (e3) {
+          console.warn('[SicakapDB] Sync rombel notice:', e3);
         }
 
         // 4. Fetch Siswa
-        const { data: siswas } = await window.supabase
-          .from('profiles')
-          .select('*')
-          .eq('school_id', schoolId)
-          .eq('role', 'siswa')
-          .order('full_name', { ascending: true });
+        try {
+          const { data: siswas } = await window.supabase
+            .from('profiles')
+            .select('*')
+            .eq('school_id', schoolId)
+            .eq('role', 'siswa')
+            .order('full_name', { ascending: true });
 
-        if (Array.isArray(siswas)) {
-          const mappedSiswa = siswas.map(s => ({
-            id: s.id,
-            nama: s.full_name,
-            nisn: s.identifier || '',
-            rombelId: s.class_name || s.kelas || '',
-            kelas: s.kelas || s.class_name || '',
-            password: s.initial_password || '••••••',
-            statusUjian: 'Belum Ujian'
-          }));
-          this.write(KEYS.SISWA, mappedSiswa, true);
-          this.syncRombelStudentCount();
+          if (Array.isArray(siswas)) {
+            const mappedSiswa = siswas.map(s => ({
+              id: s.id,
+              nama: s.full_name,
+              nisn: s.identifier || '',
+              rombelId: s.class_name || s.kelas || '',
+              kelas: s.kelas || s.class_name || '',
+              password: s.initial_password || '••••••',
+              statusUjian: 'Belum Ujian'
+            }));
+            this.write(KEYS.SISWA, mappedSiswa, true);
+            this.syncRombelStudentCount();
+          }
+        } catch (e4) {
+          console.warn('[SicakapDB] Sync siswa notice:', e4);
         }
 
         // 5. Fetch Jadwal / Exams
-        const { data: exams } = await window.supabase
-          .from('exams')
-          .select('*')
-          .eq('school_id', schoolId)
-          .order('created_at', { ascending: false });
+        try {
+          const { data: exams } = await window.supabase
+            .from('exams')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('created_at', { ascending: false });
 
-        if (Array.isArray(exams)) {
-          const mappedJadwal = exams.map(e => this.mapExamFromDb(e));
-          this.write(KEYS.JADWAL, mappedJadwal, true);
+          if (Array.isArray(exams)) {
+            const mappedJadwal = exams.map(e => this.mapExamFromDb(e));
+            this.write(KEYS.JADWAL, mappedJadwal, true);
+          }
+        } catch (e5) {
+          console.warn('[SicakapDB] Sync exams notice:', e5);
         }
 
         // 6. Fetch Questions
-        const { data: questions } = await window.supabase
-          .from('questions')
-          .select('*')
-          .eq('school_id', schoolId)
-          .order('order_no', { ascending: true });
+        try {
+          const { data: questions } = await window.supabase
+            .from('questions')
+            .select('*')
+            .eq('school_id', schoolId)
+            .order('order_no', { ascending: true });
 
-        if (Array.isArray(questions)) {
-          const mappedSoal = questions.map(q => ({
-            id: q.id,
-            examId: q.exam_id,
-            mapel: q.competency || 'Matematika SD',
-            tingkat: (String(q.kelas || '5').replace(/[^0-9]/g, '') || '5'),
-            kelas: q.kelas || 'Kelas 5',
-            tipe: q.type || 'single',
-            stimulus: q.stimulus || '',
-            wacana: q.stimulus || '',
-            pertanyaan: q.prompt || '',
-            opsi: q.options || [],
-            kunci: q.answer_key || q.kunci || 'A',
-            pembahasan: q.rubric_note || '',
-            cpTp: q.topic || q.competency || '',
-            levelKognitif: q.cognitive_level || 'MOTS',
-            points: Number(q.points) || 1
-          }));
-          this.write(KEYS.SOAL, mappedSoal, true);
+          if (Array.isArray(questions)) {
+            const mappedSoal = questions.map(q => ({
+              id: q.id,
+              examId: q.exam_id,
+              mapel: q.competency || 'Matematika SD',
+              tingkat: (String(q.kelas || '5').replace(/[^0-9]/g, '') || '5'),
+              kelas: q.kelas || 'Kelas 5',
+              tipe: q.type || 'single',
+              stimulus: q.stimulus || '',
+              wacana: q.stimulus || '',
+              pertanyaan: q.prompt || '',
+              opsi: q.options || [],
+              kunci: q.answer_key || q.kunci || 'A',
+              pembahasan: q.rubric_note || '',
+              cpTp: q.topic || q.competency || '',
+              levelKognitif: q.cognitive_level || 'MOTS',
+              points: Number(q.points) || 1
+            }));
+            this.write(KEYS.SOAL, mappedSoal, true);
+          }
+        } catch (e6) {
+          console.warn('[SicakapDB] Sync questions notice:', e6);
         }
 
         this.isHydrated = true;
@@ -378,7 +405,12 @@
         this.broadcast(KEYS.SNAPSHOT, { action: 'cloud_sync' });
       } catch (err) {
         console.warn('[SicakapDB] syncFromCloud error:', err);
-        this.setCloudSyncStatus('offline');
+        this.setCloudSyncStatus(this.isHydrated ? 'saved' : (navigator.onLine ? 'saved' : 'offline'));
+      } finally {
+        const textEl = document.getElementById('sicakap-cloud-text');
+        if (textEl && textEl.textContent.includes('Menyinkronkan')) {
+          this.setCloudSyncStatus(this.isHydrated ? 'saved' : (navigator.onLine ? 'saved' : 'offline'));
+        }
       }
     },
 

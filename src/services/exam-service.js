@@ -225,109 +225,131 @@ export async function fetchExamQuestions(examId, sessionId, { shuffleQuestions, 
 }
 
 export function isAnswerCorrect(question, studentAnswer) {
-  if (!question || !studentAnswer) return false;
+  try {
+    if (!question || studentAnswer === undefined || studentAnswer === null) return false;
 
-  const type = question.type || 'single';
-
-  // 1. Ekstrak Kunci Jawaban
-  let rawKey = question.answer_key ?? question.correct_answer ?? question.kunci ?? question.kunci_jawaban ?? question.correct_index ?? question.correct;
-  if (rawKey && typeof rawKey === 'object' && !Array.isArray(rawKey)) {
-    if (rawKey.correct !== undefined) rawKey = rawKey.correct;
-    else if (rawKey.accepted !== undefined) rawKey = rawKey.accepted;
-    else if (rawKey.key !== undefined) rawKey = rawKey.key;
-    else if (rawKey.value !== undefined) rawKey = rawKey.value;
-  }
-
-  // 2. Ekstrak Jawaban Siswa
-  let rawAns = studentAnswer;
-  if (studentAnswer && typeof studentAnswer === 'object' && !Array.isArray(studentAnswer)) {
-    if (studentAnswer.selected !== undefined) rawAns = studentAnswer.selected;
-    else if (studentAnswer.value !== undefined) rawAns = studentAnswer.value;
-    else if (studentAnswer.selectedKey !== undefined) rawAns = studentAnswer.selectedKey;
-    else if (studentAnswer.text !== undefined) rawAns = studentAnswer.text;
-    else if (studentAnswer.answers !== undefined) rawAns = studentAnswer.answers;
-    else if (studentAnswer.pairs !== undefined) rawAns = studentAnswer.pairs;
-    else if (studentAnswer.answer !== undefined) rawAns = studentAnswer.answer;
-  }
-
-  // Helper normalisasi huruf / indeks
-  function normalizeToLetter(val, options) {
-    if (val === null || val === undefined) return '';
-    const s = String(val).trim();
-    if (!s) return '';
-
-    // Jika angka 0..4 -> 'A'..'E'
-    if (/^[0-4]$/.test(s)) {
-      return String.fromCharCode(65 + parseInt(s, 10));
+    let q = question;
+    if (typeof q === 'string') {
+      try { q = JSON.parse(q); } catch (e) {}
+    }
+    let sa = studentAnswer;
+    if (typeof sa === 'string' && (sa.startsWith('{') || sa.startsWith('['))) {
+      try { sa = JSON.parse(sa); } catch (e) {}
     }
 
-    // Jika format prefix seperti "A." atau "A)" atau "(A)"
-    const m = s.match(/^\(?([A-Ea-e])[\.\)\:\s]/);
-    if (m) return m[1].toUpperCase();
+    const type = q.type || 'single';
 
-    // Jika huruf tunggal A-E
-    if (s.length === 1 && /^[A-Ea-e]$/.test(s)) {
+    // 1. Ekstrak Kunci Jawaban
+    let rawKey = q.answer_key ?? q.correct_answer ?? q.kunci ?? q.kunci_jawaban ?? q.correct_index ?? q.correct;
+    if (typeof rawKey === 'string' && (rawKey.startsWith('{') || rawKey.startsWith('['))) {
+      try { rawKey = JSON.parse(rawKey); } catch (e) {}
+    }
+    if (rawKey && typeof rawKey === 'object' && !Array.isArray(rawKey)) {
+      if (rawKey.correct !== undefined) rawKey = rawKey.correct;
+      else if (rawKey.accepted !== undefined) rawKey = rawKey.accepted;
+      else if (rawKey.key !== undefined) rawKey = rawKey.key;
+      else if (rawKey.value !== undefined) rawKey = rawKey.value;
+    }
+
+    // 2. Ekstrak Jawaban Siswa
+    let rawAns = sa;
+    if (rawAns && typeof rawAns === 'object' && !Array.isArray(rawAns)) {
+      if (rawAns.selected !== undefined) rawAns = rawAns.selected;
+      else if (rawAns.value !== undefined) rawAns = rawAns.value;
+      else if (rawAns.selectedKey !== undefined) rawAns = rawAns.selectedKey;
+      else if (rawAns.text !== undefined) rawAns = rawAns.text;
+      else if (rawAns.answers !== undefined) rawAns = rawAns.answers;
+      else if (rawAns.pairs !== undefined) rawAns = rawAns.pairs;
+      else if (rawAns.answer !== undefined) rawAns = rawAns.answer;
+    }
+
+    // Helper normalisasi huruf / indeks
+    function normalizeToLetter(val, options) {
+      if (val === null || val === undefined) return '';
+      const s = String(val).trim();
+      if (!s) return '';
+
+      // Jika angka 0..4 -> 'A'..'E'
+      if (/^[0-4]$/.test(s)) {
+        return String.fromCharCode(65 + parseInt(s, 10));
+      }
+
+      // Jika format prefix seperti "A." atau "A)" atau "(A)"
+      const m = s.match(/^\(?([A-Ea-e])[\.\)\:\s]/);
+      if (m) return m[1].toUpperCase();
+
+      // Jika huruf tunggal A-E
+      if (s.length === 1 && /^[A-Ea-e]$/.test(s)) {
+        return s.toUpperCase();
+      }
+
+      let opts = options;
+      if (typeof opts === 'string') {
+        try { opts = JSON.parse(opts); } catch (e) {}
+      }
+
+      // Jika mencocokkan teks opsi
+      if (Array.isArray(opts)) {
+        const sLower = s.toLowerCase();
+        for (let i = 0; i < opts.length; i++) {
+          const opt = opts[i];
+          const optText = (typeof opt === 'string' ? opt : (opt?.text || opt?.label || '')).trim().toLowerCase();
+          if (optText && (optText === sLower || sLower.includes(optText))) {
+            const optKey = (typeof opt === 'object' && (opt?.originalKey || opt?.key)) ? (opt.originalKey || opt.key) : String.fromCharCode(65 + i);
+            return String(optKey).toUpperCase();
+          }
+        }
+      }
+
       return s.toUpperCase();
     }
 
-    // Jika mencocokkan teks opsi
-    if (Array.isArray(options)) {
-      const sLower = s.toLowerCase();
-      for (let i = 0; i < options.length; i++) {
-        const opt = options[i];
-        const optText = (typeof opt === 'string' ? opt : (opt.text || opt.label || '')).trim().toLowerCase();
-        if (optText && (optText === sLower || sLower.includes(optText))) {
-          const optKey = (typeof opt === 'object' && (opt.originalKey || opt.key)) ? (opt.originalKey || opt.key) : String.fromCharCode(65 + i);
-          return String(optKey).toUpperCase();
-        }
+    // 3. Evaluasi berdasarkan tipe soal
+    if (type === 'single' || type === 'mcq' || type === 'pg' || !type) {
+      const keyLetter = normalizeToLetter(rawKey, q.options);
+      const ansLetter = normalizeToLetter(rawAns, q.options);
+      if (keyLetter && ansLetter) {
+        return keyLetter === ansLetter;
       }
+      return String(rawAns).trim().toLowerCase() === String(rawKey).trim().toLowerCase();
     }
 
-    return s.toUpperCase();
-  }
-
-  // 3. Evaluasi berdasarkan tipe soal
-  if (type === 'single' || type === 'mcq' || type === 'pg' || !type) {
-    const keyLetter = normalizeToLetter(rawKey, question.options);
-    const ansLetter = normalizeToLetter(rawAns, question.options);
-    if (keyLetter && ansLetter) {
-      return keyLetter === ansLetter;
+    if (type === 'multiple') {
+      const userArr = Array.isArray(rawAns) ? rawAns : [rawAns];
+      const keyArr = Array.isArray(rawKey) ? rawKey : [rawKey];
+      const normUser = userArr.map(u => normalizeToLetter(u, q.options)).filter(Boolean).sort();
+      const normKey = keyArr.map(k => normalizeToLetter(k, q.options)).filter(Boolean).sort();
+      if (normUser.length === 0 || normKey.length === 0) return false;
+      return normUser.length === normKey.length && normUser.every((v, i) => v === normKey[i]);
     }
-    return String(rawAns).trim().toLowerCase() === String(rawKey).trim().toLowerCase();
-  }
 
-  if (type === 'multiple') {
-    const userArr = Array.isArray(rawAns) ? rawAns : [rawAns];
-    const keyArr = Array.isArray(rawKey) ? rawKey : [rawKey];
-    const normUser = userArr.map(u => normalizeToLetter(u, question.options)).filter(Boolean).sort();
-    const normKey = keyArr.map(k => normalizeToLetter(k, question.options)).filter(Boolean).sort();
-    if (normUser.length === 0 || normKey.length === 0) return false;
-    return normUser.length === normKey.length && normUser.every((v, i) => v === normKey[i]);
-  }
+    if (type === 'true_false_table') {
+      const userMap = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
+      const keyMap = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
+      const keys = Object.keys(keyMap);
+      if (keys.length === 0) return false;
+      return keys.every(k => Boolean(userMap[k]) === Boolean(keyMap[k]));
+    }
 
-  if (type === 'true_false_table') {
-    const userMap = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
-    const keyMap = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
-    const keys = Object.keys(keyMap);
-    if (keys.length === 0) return false;
-    return keys.every(k => Boolean(userMap[k]) === Boolean(keyMap[k]));
-  }
+    if (type === 'matching') {
+      const userPairs = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
+      const keyPairs = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
+      const keys = Object.keys(keyPairs);
+      if (keys.length === 0) return false;
+      return keys.every(k => String(userPairs[k] ?? '').trim().toLowerCase() === String(keyPairs[k] ?? '').trim().toLowerCase());
+    }
 
-  if (type === 'matching') {
-    const userPairs = (typeof rawAns === 'object' && rawAns) ? rawAns : {};
-    const keyPairs = (typeof rawKey === 'object' && rawKey) ? rawKey : {};
-    const keys = Object.keys(keyPairs);
-    if (keys.length === 0) return false;
-    return keys.every(k => String(userPairs[k] ?? '').trim().toLowerCase() === String(keyPairs[k] ?? '').trim().toLowerCase());
-  }
+    if (type === 'short_answer' || type === 'isian') {
+      const userText = String(rawAns ?? '').trim().toLowerCase();
+      const accepted = Array.isArray(rawKey) ? rawKey : [rawKey];
+      return accepted.some(acc => String(acc ?? '').trim().toLowerCase() === userText);
+    }
 
-  if (type === 'short_answer' || type === 'isian') {
-    const userText = String(rawAns ?? '').trim().toLowerCase();
-    const accepted = Array.isArray(rawKey) ? rawKey : [rawKey];
-    return accepted.some(acc => String(acc ?? '').trim().toLowerCase() === userText);
+    return false;
+  } catch (err) {
+    console.warn('[isAnswerCorrect] Evaluation warning:', err);
+    return false;
   }
-
-  return false;
 }
 
 export async function logViolation({ sessionId, schoolId, actorId, eventType, details = {}, currentCount = 0 }) {
