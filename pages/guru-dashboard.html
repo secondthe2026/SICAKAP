@@ -97,6 +97,11 @@
             avatarEl.textContent = initials || 'GUR';
           }
 
+          // Sync live cloud data from Supabase for this school
+          if (window.SicakapDB && typeof window.SicakapDB.syncFromCloud === 'function' && p.school_id) {
+            await window.SicakapDB.syncFromCloud(p.school_id);
+          }
+
           // Trigger re-render with active class isolation
           if (typeof window.initGuruData === 'function') {
             window.initGuruData();

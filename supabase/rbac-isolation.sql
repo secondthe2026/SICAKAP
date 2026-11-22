@@ -1137,3 +1137,60 @@ ADD COLUMN IF NOT EXISTS nip_kepsek TEXT,
 ADD COLUMN IF NOT EXISTS tahun_pelajaran TEXT DEFAULT '2026/2027',
 ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'Semester Ganjil';
 
+-- ============================================================================
+-- PERSISTENSI DATA PRODUKSI (CLASSES / ROMBEL & PROFILES ENHANCEMENT)
+-- ============================================================================
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS subject TEXT,
+ADD COLUMN IF NOT EXISTS phone TEXT,
+ADD COLUMN IF NOT EXISTS initial_password TEXT;
+
+CREATE TABLE IF NOT EXISTS public.classes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  grade_level TEXT NOT NULL DEFAULT '1',
+  phase TEXT DEFAULT 'Fase A',
+  homeroom_teacher_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  student_count INT DEFAULT 0,
+  academic_year TEXT DEFAULT '2026/2027',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_school_class_name UNIQUE (school_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_classes_school_id ON public.classes(school_id);
+CREATE INDEX IF NOT EXISTS idx_classes_grade_level ON public.classes(grade_level);
+
+ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'classes' AND policyname = 'school_members_read_classes') THEN
+        CREATE POLICY "school_members_read_classes" ON public.classes
+          FOR SELECT USING (
+            school_id = public.get_my_school_id()
+            OR public.get_my_role() = 'superadmin'
+          );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'classes' AND policyname = 'admin_manage_classes') THEN
+        CREATE POLICY "admin_manage_classes" ON public.classes
+          FOR ALL USING (
+            school_id = public.get_my_school_id()
+            AND public.get_my_role() = 'admin_sekolah'
+          )
+          WITH CHECK (
+            school_id = public.get_my_school_id()
+            AND public.get_my_role() = 'admin_sekolah'
+          );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'classes' AND policyname = 'superadmin_manage_classes') THEN
+        CREATE POLICY "superadmin_manage_classes" ON public.classes
+          FOR ALL USING (public.get_my_role() = 'superadmin')
+          WITH CHECK (public.get_my_role() = 'superadmin');
+    END IF;
+END $$;
+
+

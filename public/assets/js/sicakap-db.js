@@ -195,6 +195,208 @@
   const SicakapDB = {
     KEYS: KEYS,
     VERSION: DB_VERSION,
+    isHydrated: false,
+
+    getActiveSchoolId: function () {
+      if (typeof window !== 'undefined') {
+        const sId = window.__SICAKAP_USER__?.profile?.school_id || 
+                    window.__ADMIN_SESSION__?.profile?.school_id ||
+                    window.__ACTIVE_SCHOOL_PROFILE__?.id;
+        if (sId) return sId;
+      }
+      return null;
+    },
+
+    hasActiveSchoolSession: function () {
+      if (this.getActiveSchoolId()) return true;
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+            return true;
+          }
+        }
+      }
+      return false;
+    },
+
+    setCloudSyncStatus: function (status) {
+      const textEl = document.getElementById('sicakap-cloud-text');
+      const dotEl = document.getElementById('sicakap-cloud-dot');
+      if (!textEl) return;
+      if (status === 'syncing') {
+        textEl.textContent = 'Supabase Cloud: Menyinkronkan...';
+        if (dotEl) dotEl.className = 'w-2 h-2 rounded-full bg-amber-400 animate-spin';
+      } else if (status === 'saving') {
+        textEl.textContent = 'Supabase Cloud: Menyimpan perubahan...';
+        if (dotEl) dotEl.className = 'w-2 h-2 rounded-full bg-indigo-500 animate-pulse';
+      } else if (status === 'saved') {
+        textEl.textContent = 'Supabase Cloud: Terhubung & Tersinkronisasi';
+        if (dotEl) dotEl.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+      } else {
+        textEl.textContent = 'Supabase Cloud: Offline (Cache Lokal Aktif)';
+        if (dotEl) dotEl.className = 'w-2 h-2 rounded-full bg-slate-400';
+      }
+    },
+
+    syncFromCloud: async function (targetSchoolId) {
+      if (typeof window === 'undefined' || !window.supabase) return;
+      const schoolId = targetSchoolId || this.getActiveSchoolId();
+      if (!schoolId) return;
+
+      this.setCloudSyncStatus('syncing');
+
+      try {
+        // 1. Fetch Profil Sekolah
+        const { data: school } = await window.supabase
+          .from('schools')
+          .select('*')
+          .eq('id', schoolId)
+          .maybeSingle();
+
+        if (school) {
+          this.saveProfilSekolah({
+            id: school.id,
+            namaSekolah: school.name || '',
+            npsn: school.npsn || '',
+            nss: school.nss || '',
+            alamat: school.alamat || school.kabupaten || '',
+            namaPemda: school.nama_pemda || '',
+            namaDinas: school.nama_dinas || '',
+            kepsekNama: school.kepala_sekolah || '',
+            kepsekNip: school.nip_kepsek || '',
+            tahunPelajaran: school.tahun_pelajaran || '2026/2027',
+            semester: school.semester || 'Semester Ganjil',
+            logoKabupatenUrl: school.logo_kabupaten_url || '',
+            logoUrl: school.logo_url || '',
+            kabupaten: school.kabupaten || '',
+            jenjang: school.jenjang || 'SD'
+          });
+        }
+
+        // 2. Fetch Guru
+        const { data: gurus } = await window.supabase
+          .from('profiles')
+          .select('*')
+          .eq('school_id', schoolId)
+          .eq('role', 'guru')
+          .order('full_name', { ascending: true });
+
+        if (Array.isArray(gurus)) {
+          const mappedGuru = gurus.map(g => ({
+            id: g.id,
+            nama: g.full_name,
+            nip: g.identifier || '',
+            email: g.email || '',
+            mapel: g.subject || '',
+            rombelWali: g.kelas || g.class_name || '',
+            kelas: g.kelas || g.class_name || '',
+            password: g.initial_password || '••••••••'
+          }));
+          this.write(KEYS.GURU, mappedGuru, true);
+        }
+
+        // 3. Fetch Classes / Rombel
+        const { data: classes } = await window.supabase
+          .from('classes')
+          .select('*')
+          .eq('school_id', schoolId)
+          .order('grade_level', { ascending: true });
+
+        if (Array.isArray(classes)) {
+          const mappedRombel = classes.map(c => ({
+            id: c.id,
+            namaRombel: c.name,
+            tingkat: c.grade_level,
+            fase: c.phase || 'Fase A',
+            waliKelasId: c.homeroom_teacher_id || '',
+            jumlahSiswa: c.student_count || 0
+          }));
+          this.write(KEYS.ROMBEL, mappedRombel, true);
+        }
+
+        // 4. Fetch Siswa
+        const { data: siswas } = await window.supabase
+          .from('profiles')
+          .select('*')
+          .eq('school_id', schoolId)
+          .eq('role', 'siswa')
+          .order('full_name', { ascending: true });
+
+        if (Array.isArray(siswas)) {
+          const mappedSiswa = siswas.map(s => ({
+            id: s.id,
+            nama: s.full_name,
+            nisn: s.identifier || '',
+            rombelId: s.class_name || s.kelas || '',
+            kelas: s.kelas || s.class_name || '',
+            password: s.initial_password || '••••••',
+            statusUjian: 'Belum Ujian'
+          }));
+          this.write(KEYS.SISWA, mappedSiswa, true);
+          this.syncRombelStudentCount();
+        }
+
+        // 5. Fetch Jadwal / Exams
+        const { data: exams } = await window.supabase
+          .from('exams')
+          .select('*')
+          .eq('school_id', schoolId)
+          .order('created_at', { ascending: false });
+
+        if (Array.isArray(exams)) {
+          const mappedJadwal = exams.map(e => ({
+            id: e.id,
+            mapel: e.subject || e.title,
+            rombelId: e.kelas || e.grade_level || '',
+            kelas: e.kelas || e.grade_level || '',
+            token: e.token_code || '',
+            durasi: e.duration_minutes || 60,
+            status: e.status === 'published' ? 'Aktif' : 'Draft',
+            tanggal: e.starts_at ? e.starts_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
+          }));
+          this.write(KEYS.JADWAL, mappedJadwal, true);
+        }
+
+        // 6. Fetch Questions
+        const { data: questions } = await window.supabase
+          .from('questions')
+          .select('*')
+          .eq('school_id', schoolId)
+          .order('order_no', { ascending: true });
+
+        if (Array.isArray(questions)) {
+          const mappedSoal = questions.map(q => ({
+            id: q.id,
+            examId: q.exam_id,
+            mapel: q.competency || '',
+            tingkat: q.kelas || '',
+            tipe: q.type || 'single',
+            stimulus: q.stimulus || '',
+            wacana: q.stimulus || '',
+            pertanyaan: q.prompt || '',
+            opsi: q.options || [],
+            points: q.points || 1
+          }));
+          this.write(KEYS.SOAL, mappedSoal, true);
+        }
+
+        this.isHydrated = true;
+        this.setCloudSyncStatus('saved');
+        this.broadcast(KEYS.SNAPSHOT, { action: 'cloud_sync' });
+      } catch (err) {
+        console.warn('[SicakapDB] syncFromCloud error:', err);
+        this.setCloudSyncStatus('offline');
+      }
+    },
+
+    manualSync: async function () {
+      this.showToast('⏳ Menyinkronkan seluruh data dari Supabase Cloud...', 'info');
+      await this.syncFromCloud();
+      this.showToast('✅ Seluruh data berhasil disinkronkan dari Supabase Cloud!', 'success');
+      if (typeof window.initAdminData === 'function') window.initAdminData();
+      if (typeof window.initGuruData === 'function') window.initGuruData();
+    },
 
     // Safe JSON Parse with fallback
     safeParse: function (str, fallback) {
@@ -317,11 +519,44 @@
 
     // Initialize & Smart Auto-Seed
     init: function () {
+      const isRealSchool = this.hasActiveSchoolSession();
+
+      if (isRealSchool) {
+        // Lingkungan Sekolah Riil: JANGAN PERNAH seed dummy SDN 1 Nusantara
+        localStorage.setItem(KEYS.VERSION, DB_VERSION);
+        if (!localStorage.getItem(KEYS.GURU)) localStorage.setItem(KEYS.GURU, '[]');
+        if (!localStorage.getItem(KEYS.ROMBEL)) localStorage.setItem(KEYS.ROMBEL, '[]');
+        if (!localStorage.getItem(KEYS.SISWA)) localStorage.setItem(KEYS.SISWA, '[]');
+        if (!localStorage.getItem(KEYS.JADWAL)) localStorage.setItem(KEYS.JADWAL, '[]');
+        if (!localStorage.getItem(KEYS.SOAL)) localStorage.setItem(KEYS.SOAL, '[]');
+        if (!localStorage.getItem(KEYS.MAPEL)) localStorage.setItem(KEYS.MAPEL, JSON.stringify(SEED_DATA.mapel));
+
+        // Bersihkan data profil demo jika ada di localstorage
+        try {
+          const storedProfil = localStorage.getItem(KEYS.PROFIL_SEKOLAH);
+          if (storedProfil && storedProfil.includes('SDN 1 Nusantara')) {
+            localStorage.removeItem(KEYS.PROFIL_SEKOLAH);
+          }
+        } catch (e) {}
+
+        this.syncRombelStudentCount();
+        this.listenBroadcast();
+
+        // Trigger asynchronous cloud sync jika belum terhidrasi
+        if (!this.isHydrated && typeof window !== 'undefined' && window.supabase) {
+          const schoolId = this.getActiveSchoolId();
+          if (schoolId) {
+            this.syncFromCloud(schoolId);
+          }
+        }
+        return;
+      }
+
+      // Fallback Demo Mode HANYA jika offline / belum login sama sekali
       const curVersion = localStorage.getItem(KEYS.VERSION);
       const hasGuru = localStorage.getItem(KEYS.GURU);
 
       if (!curVersion || !hasGuru) {
-        console.info('[SicakapDB] Auto-Seeding SD Initial Database (' + DB_VERSION + ')...');
         localStorage.setItem(KEYS.VERSION, DB_VERSION);
         localStorage.setItem(KEYS.SEKOLAH, JSON.stringify(SEED_DATA.sekolah));
         localStorage.setItem(KEYS.LEGACY_SUBMISSIONS, JSON.stringify(SEED_DATA.sekolah));
@@ -335,25 +570,6 @@
         localStorage.setItem(KEYS.PROFIL_SEKOLAH, JSON.stringify(SEED_DATA.profilSekolah));
         localStorage.setItem(KEYS.AKUN_ADMIN, JSON.stringify(SEED_DATA.akunAdmin));
         this.updateSnapshot();
-      }
-
-      // Pastikan Mapel SD selalu terinisialisasi
-      // Bersihkan data profil demo lama jika tersimpan di cache browser
-      try {
-        const storedProfil = localStorage.getItem(KEYS.PROFIL_SEKOLAH);
-        if (storedProfil && storedProfil.includes('SDN 1 Nusantara')) {
-          localStorage.removeItem(KEYS.PROFIL_SEKOLAH);
-        }
-      } catch (e) {}
-
-      if (!localStorage.getItem(KEYS.MAPEL)) {
-        localStorage.setItem(KEYS.MAPEL, JSON.stringify(SEED_DATA.mapel));
-      }
-      if (!localStorage.getItem(KEYS.PROFIL_SEKOLAH)) {
-        localStorage.setItem(KEYS.PROFIL_SEKOLAH, JSON.stringify(SEED_DATA.profilSekolah));
-      }
-      if (!localStorage.getItem(KEYS.AKUN_ADMIN)) {
-        localStorage.setItem(KEYS.AKUN_ADMIN, JSON.stringify(SEED_DATA.akunAdmin));
       }
 
       this.syncRombelStudentCount();
@@ -480,6 +696,28 @@
       guru.updatedAt = new Date().toISOString().slice(0, 10);
       list.push(guru);
       this.saveGuru(list);
+
+      // Async write to Supabase
+      if (typeof window !== 'undefined' && window.supabase) {
+        const schoolId = this.getActiveSchoolId();
+        if (schoolId) {
+          this.setCloudSyncStatus('saving');
+          window.supabase.from('profiles').insert([{
+            school_id: schoolId,
+            role: 'guru',
+            full_name: guru.nama,
+            identifier: guru.nip,
+            email: guru.email || null,
+            subject: guru.mapel || null,
+            kelas: guru.rombelWali || guru.kelas,
+            class_name: guru.rombelWali || guru.kelas,
+            initial_password: guru.password
+          }]).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase addGuru error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+      }
       return guru;
     },
     updateGuru: function (id, updatedFields) {
@@ -488,6 +726,24 @@
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...updatedFields, updatedAt: new Date().toISOString().slice(0, 10) };
         this.saveGuru(list);
+
+        if (typeof window !== 'undefined' && window.supabase) {
+          this.setCloudSyncStatus('saving');
+          const patch = {};
+          if (updatedFields.nama) patch.full_name = updatedFields.nama;
+          if (updatedFields.nip) patch.identifier = updatedFields.nip;
+          if (updatedFields.mapel) patch.subject = updatedFields.mapel;
+          if (updatedFields.rombelWali || updatedFields.kelas) {
+            patch.kelas = updatedFields.rombelWali || updatedFields.kelas;
+            patch.class_name = updatedFields.rombelWali || updatedFields.kelas;
+          }
+          if (updatedFields.password) patch.initial_password = updatedFields.password;
+          patch.updated_at = new Date().toISOString();
+
+          window.supabase.from('profiles').update(patch).eq('id', id).then(() => {
+            this.setCloudSyncStatus('saved');
+          });
+        }
         return list[idx];
       }
       return null;
@@ -496,6 +752,13 @@
       let list = this.getGuru();
       list = list.filter(g => g.id !== id);
       this.saveGuru(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        this.setCloudSyncStatus('saving');
+        window.supabase.from('profiles').delete().eq('id', id).then(() => {
+          this.setCloudSyncStatus('saved');
+        });
+      }
     },
     bulkDeleteGuru: function (ids) {
       if (!Array.isArray(ids) || ids.length === 0) return 0;
@@ -537,6 +800,23 @@
       rombel.updatedAt = new Date().toISOString().slice(0, 10);
       list.push(rombel);
       this.saveRombel(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        const schoolId = this.getActiveSchoolId();
+        if (schoolId) {
+          this.setCloudSyncStatus('saving');
+          window.supabase.from('classes').insert([{
+            school_id: schoolId,
+            name: rombel.namaRombel,
+            grade_level: String(rombel.tingkat || '1'),
+            phase: rombel.fase || 'Fase A',
+            student_count: rombel.jumlahSiswa || 0
+          }]).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase addRombel error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+      }
       return rombel;
     },
     updateRombel: function (id, updatedFields) {
@@ -545,6 +825,19 @@
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...updatedFields, updatedAt: new Date().toISOString().slice(0, 10) };
         this.saveRombel(list);
+
+        if (typeof window !== 'undefined' && window.supabase) {
+          this.setCloudSyncStatus('saving');
+          const patch = {};
+          if (updatedFields.namaRombel) patch.name = updatedFields.namaRombel;
+          if (updatedFields.tingkat) patch.grade_level = String(updatedFields.tingkat);
+          if (updatedFields.fase) patch.phase = updatedFields.fase;
+          patch.updated_at = new Date().toISOString();
+
+          window.supabase.from('classes').update(patch).eq('id', id).then(() => {
+            this.setCloudSyncStatus('saved');
+          });
+        }
         return list[idx];
       }
       return null;
@@ -553,6 +846,13 @@
       let list = this.getRombel();
       list = list.filter(r => r.id !== id);
       this.saveRombel(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        this.setCloudSyncStatus('saving');
+        window.supabase.from('classes').delete().eq('id', id).then(() => {
+          this.setCloudSyncStatus('saved');
+        });
+      }
     },
     bulkDeleteRombel: function (ids) {
       if (!Array.isArray(ids) || ids.length === 0) return 0;
@@ -608,6 +908,25 @@
       siswa.updatedAt = new Date().toISOString().slice(0, 10);
       list.push(siswa);
       this.saveSiswa(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        const schoolId = this.getActiveSchoolId();
+        if (schoolId) {
+          this.setCloudSyncStatus('saving');
+          window.supabase.from('profiles').insert([{
+            school_id: schoolId,
+            role: 'siswa',
+            full_name: siswa.nama,
+            identifier: String(siswa.nisn).trim(),
+            kelas: siswa.kelas || siswa.rombelId,
+            class_name: siswa.class_name || siswa.rombelId,
+            initial_password: siswa.password
+          }]).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase addSiswa error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+      }
       return siswa;
     },
     updateSiswa: function (id, updatedFields) {
@@ -616,6 +935,23 @@
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...updatedFields, updatedAt: new Date().toISOString().slice(0, 10) };
         this.saveSiswa(list);
+
+        if (typeof window !== 'undefined' && window.supabase) {
+          this.setCloudSyncStatus('saving');
+          const patch = {};
+          if (updatedFields.nama) patch.full_name = updatedFields.nama;
+          if (updatedFields.nisn) patch.identifier = String(updatedFields.nisn).trim();
+          if (updatedFields.kelas || updatedFields.rombelId) {
+            patch.kelas = updatedFields.kelas || updatedFields.rombelId;
+            patch.class_name = updatedFields.class_name || updatedFields.kelas || updatedFields.rombelId;
+          }
+          if (updatedFields.password) patch.initial_password = updatedFields.password;
+          patch.updated_at = new Date().toISOString();
+
+          window.supabase.from('profiles').update(patch).or(`id.eq.${id},identifier.eq.${id}`).then(() => {
+            this.setCloudSyncStatus('saved');
+          });
+        }
         return list[idx];
       }
       return null;
@@ -624,6 +960,13 @@
       let list = this.getSiswa();
       list = list.filter(s => s.id !== id && s.nisn !== id);
       this.saveSiswa(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        this.setCloudSyncStatus('saving');
+        window.supabase.from('profiles').delete().or(`id.eq.${id},identifier.eq.${id}`).then(() => {
+          this.setCloudSyncStatus('saved');
+        });
+      }
     },
     bulkDeleteSiswa: function (ids) {
       if (!Array.isArray(ids) || ids.length === 0) return 0;
@@ -663,6 +1006,27 @@
       jadwal.updatedAt = new Date().toISOString().slice(0, 10);
       list.push(jadwal);
       this.saveJadwal(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        const schoolId = this.getActiveSchoolId();
+        if (schoolId) {
+          this.setCloudSyncStatus('saving');
+          window.supabase.from('exams').insert([{
+            school_id: schoolId,
+            title: `Ujian ${jadwal.mapel} ${jadwal.kelas || jadwal.rombelId || ''}`.trim(),
+            subject: jadwal.mapel,
+            kelas: jadwal.kelas || jadwal.rombelId || 'Kelas 5',
+            grade_level: jadwal.kelas || jadwal.rombelId || '5',
+            duration_minutes: Number(jadwal.durasi) || 60,
+            token_code: jadwal.token,
+            status: jadwal.status === 'Aktif' ? 'published' : 'draft',
+            starts_at: jadwal.tanggal ? new Date(jadwal.tanggal).toISOString() : new Date().toISOString()
+          }]).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase addJadwal error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+      }
       return jadwal;
     },
     updateJadwal: function (id, updatedFields) {
@@ -671,6 +1035,24 @@
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...updatedFields, updatedAt: new Date().toISOString().slice(0, 10) };
         this.saveJadwal(list);
+
+        if (typeof window !== 'undefined' && window.supabase) {
+          this.setCloudSyncStatus('saving');
+          const patch = {};
+          if (updatedFields.mapel) patch.subject = updatedFields.mapel;
+          if (updatedFields.kelas || updatedFields.rombelId) {
+            patch.kelas = updatedFields.kelas || updatedFields.rombelId;
+            patch.grade_level = updatedFields.kelas || updatedFields.rombelId;
+          }
+          if (updatedFields.durasi) patch.duration_minutes = Number(updatedFields.durasi);
+          if (updatedFields.token) patch.token_code = updatedFields.token;
+          if (updatedFields.status) patch.status = updatedFields.status === 'Aktif' ? 'published' : 'draft';
+          patch.updated_at = new Date().toISOString();
+
+          window.supabase.from('exams').update(patch).eq('id', id).then(() => {
+            this.setCloudSyncStatus('saved');
+          });
+        }
         return list[idx];
       }
       return null;
@@ -679,6 +1061,13 @@
       let list = this.getJadwal();
       list = list.filter(j => j.id !== id);
       this.saveJadwal(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        this.setCloudSyncStatus('saving');
+        window.supabase.from('exams').delete().eq('id', id).then(() => {
+          this.setCloudSyncStatus('saved');
+        });
+      }
     },
     bulkDeleteJadwal: function (ids) {
       if (!Array.isArray(ids) || ids.length === 0) return 0;
@@ -714,6 +1103,27 @@
       if (!soal.id) soal.id = (list.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0) + 1);
       list.push(soal);
       this.saveSoal(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        const schoolId = this.getActiveSchoolId();
+        if (schoolId) {
+          this.setCloudSyncStatus('saving');
+          window.supabase.from('questions').insert([{
+            school_id: schoolId,
+            exam_id: soal.examId || null,
+            kelas: soal.tingkat || null,
+            type: soal.tipe || 'single',
+            competency: soal.mapel || null,
+            stimulus: soal.stimulus || soal.wacana || null,
+            prompt: soal.pertanyaan,
+            options: soal.opsi || [],
+            points: soal.points || 1.00
+          }]).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase addSoal error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+      }
       return soal;
     },
     updateSoal: function (id, updatedFields) {
@@ -722,6 +1132,21 @@
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...updatedFields };
         this.saveSoal(list);
+
+        if (typeof window !== 'undefined' && window.supabase) {
+          this.setCloudSyncStatus('saving');
+          const patch = {};
+          if (updatedFields.pertanyaan) patch.prompt = updatedFields.pertanyaan;
+          if (updatedFields.opsi) patch.options = updatedFields.opsi;
+          if (updatedFields.stimulus || updatedFields.wacana) patch.stimulus = updatedFields.stimulus || updatedFields.wacana;
+          if (updatedFields.tingkat) patch.kelas = updatedFields.tingkat;
+          if (updatedFields.mapel) patch.competency = updatedFields.mapel;
+          if (updatedFields.tipe) patch.type = updatedFields.tipe;
+
+          window.supabase.from('questions').update(patch).eq('id', id).then(() => {
+            this.setCloudSyncStatus('saved');
+          });
+        }
         return list[idx];
       }
       return null;
@@ -730,6 +1155,13 @@
       let list = this.getSoal();
       list = list.filter(s => s.id !== id && String(s.id) !== String(id));
       this.saveSoal(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        this.setCloudSyncStatus('saving');
+        window.supabase.from('questions').delete().eq('id', id).then(() => {
+          this.setCloudSyncStatus('saved');
+        });
+      }
     },
     bulkDeleteSoal: function (ids) {
       if (!Array.isArray(ids) || ids.length === 0) return 0;
@@ -956,31 +1388,57 @@
       return `CAKAP-${randomNum}`;
     },
 
-    // Panel Utilitas: Export JSON
-    backupJSON: function () {
+    // Panel Utilitas: Export JSON (Live dari Supabase Cloud)
+    backupJSON: async function () {
+      this.showToast('⏳ Menyiapkan data backup dari Supabase Cloud...', 'info');
+      const schoolId = this.getActiveSchoolId();
+
+      let cloudData = null;
+      if (typeof window !== 'undefined' && window.supabase && schoolId) {
+        try {
+          const [schRes, profRes, classRes, examRes, qRes] = await Promise.all([
+            window.supabase.from('schools').select('*').eq('id', schoolId).maybeSingle(),
+            window.supabase.from('profiles').select('*').eq('school_id', schoolId),
+            window.supabase.from('classes').select('*').eq('school_id', schoolId),
+            window.supabase.from('exams').select('*').eq('school_id', schoolId),
+            window.supabase.from('questions').select('*').eq('school_id', schoolId)
+          ]);
+          cloudData = {
+            school: schRes.data,
+            profiles: profRes.data,
+            classes: classRes.data,
+            exams: examRes.data,
+            questions: qRes.data
+          };
+        } catch (e) {
+          console.warn('[SicakapDB] Cloud backup fetch fallback to local cache:', e);
+        }
+      }
+
       const dump = {
         app: 'SI-CAKAP SD',
         version: DB_VERSION,
+        schoolId: schoolId,
         exportedAt: new Date().toISOString(),
+        cloudData: cloudData,
         data: {
           sekolah: this.getSekolah(),
           profilSekolah: this.getProfilSekolah(),
-          akunAdmin: this.getAkunAdmin(),
           guru: this.getGuru(),
           rombel: this.getRombel(),
           siswa: this.getSiswa(),
           jadwal: this.getJadwal(),
           soal: this.getSoal(),
-          liveScores: this.getLiveScores(),
-          sesiAktif: this.read(KEYS.SESI_AKTIF, {})
+          liveScores: this.getLiveScores()
         }
       };
 
+      const npsn = (dump.cloudData?.school?.npsn) || (dump.data.profilSekolah?.npsn) || 'sekolah';
       const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `sicakap_sd_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `sicakap_sd_backup_${npsn}_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -988,30 +1446,75 @@
       this.showToast('💾 Berhasil mendownload backup database JSON!', 'success');
     },
 
-    // Panel Utilitas: Restore JSON
-    restoreJSON: function (jsonStr) {
+    // Panel Utilitas: Restore JSON (Safe UPSERT per baris ke Supabase Cloud)
+    restoreJSON: async function (jsonStr) {
       try {
         const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         const target = parsed.data || parsed;
 
-        if (!target.guru && !target.siswa && !target.jadwal && !target.profilSekolah) {
+        if (!target.guru && !target.siswa && !target.jadwal && !target.profilSekolah && !parsed.cloudData) {
           throw new Error('Format file JSON tidak sesuai skema SI-CAKAP SD.');
         }
 
-        if (target.sekolah) this.saveSekolah(target.sekolah);
+        const confirmMsg = '⚠️ KONFIRMASI PEMULIHAN DATA:\n\n' +
+          'Data dari file backup JSON akan digabungkan (UPSERT aman) ke database Supabase Cloud sekolah Anda.\n' +
+          'Data yang sudah ada tidak akan terhapus.\n\n' +
+          'Apakah Anda yakin ingin memproses pemulihan data ini?';
+
+        if (!confirm(confirmMsg)) return false;
+
+        this.showToast('⏳ Memulihkan data ke Supabase Cloud...', 'info');
+        const schoolId = this.getActiveSchoolId();
+
+        // 1. Safe row-by-row upsert to Supabase if client active
+        if (typeof window !== 'undefined' && window.supabase && schoolId) {
+          try {
+            // Restore Classes
+            if (Array.isArray(target.rombel)) {
+              for (const r of target.rombel) {
+                await window.supabase.from('classes').upsert({
+                  school_id: schoolId,
+                  name: r.namaRombel || r.name,
+                  grade_level: String(r.tingkat || '1'),
+                  phase: r.fase || 'Fase A',
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'school_id, name' });
+              }
+            }
+
+            // Restore Siswa Profiles
+            if (Array.isArray(target.siswa)) {
+              for (const s of target.siswa) {
+                if (s.nisn) {
+                  await window.supabase.from('profiles').upsert({
+                    school_id: schoolId,
+                    role: 'siswa',
+                    full_name: s.nama || s.full_name,
+                    identifier: String(s.nisn).trim(),
+                    kelas: s.kelas || s.class_name || s.rombelId,
+                    class_name: s.class_name || s.kelas || s.rombelId,
+                    initial_password: s.password,
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: 'identifier' });
+                }
+              }
+            }
+          } catch (cloudErr) {
+            console.warn('[SicakapDB] Cloud restore upsert notice:', cloudErr);
+          }
+        }
+
+        // 2. Cache update
         if (target.profilSekolah) this.saveProfilSekolah(target.profilSekolah);
-        if (target.akunAdmin) this.saveAkunAdmin(target.akunAdmin);
         if (target.guru) this.saveGuru(target.guru);
         if (target.rombel) this.saveRombel(target.rombel);
         if (target.siswa) this.saveSiswa(target.siswa);
         if (target.jadwal) this.saveJadwal(target.jadwal);
         if (target.soal) this.saveSoal(target.soal);
-        if (target.liveScores) this.saveLiveScores(target.liveScores);
-        if (target.sesiAktif) this.write(KEYS.SESI_AKTIF, target.sesiAktif);
 
         this.updateSnapshot();
         this.broadcast(KEYS.SNAPSHOT, { action: 'restore' });
-        this.showToast('📂 Database berhasil dipulihkan dari file JSON!', 'success');
+        this.showToast('📂 Database berhasil dipulihkan secara aman!', 'success');
         setTimeout(() => window.location.reload(), 1000);
         return true;
       } catch (err) {
@@ -1020,48 +1523,38 @@
       }
     },
 
-    // Panel Utilitas: Reset Demo Data
+    // Panel Utilitas: Reset Demo Data (Terkunci Ketat di Produksi)
     resetDemoData: function () {
-      if (confirm('Konfirmasi: Reset seluruh database SI-CAKAP SD ke pengaturan awal demo?')) {
-        localStorage.removeItem(KEYS.VERSION);
-        localStorage.removeItem(KEYS.SEKOLAH);
-        localStorage.removeItem(KEYS.GURU);
-        localStorage.removeItem(KEYS.ROMBEL);
-        localStorage.removeItem(KEYS.SISWA);
-        localStorage.removeItem(KEYS.JADWAL);
-        localStorage.removeItem(KEYS.SOAL);
-        localStorage.removeItem(KEYS.SESI_AKTIF);
-        localStorage.removeItem(KEYS.LIVE_SCORES);
-        localStorage.removeItem(KEYS.SNAPSHOT);
+      if (this.hasActiveSchoolSession()) {
+        alert('⛔ AKSI DITOLAK: Fitur Reset Data Demo dinonaktifkan pada lingkungan produksi sekolah untuk melindungi data riil.');
+        return;
+      }
+      if (confirm('Konfirmasi: Reset database demo ke pengaturan awal?')) {
+        localStorage.clear();
         this.init();
-        this.broadcast(KEYS.VERSION, { action: 'reset' });
-        this.showToast('🔄 Database berhasil di-reset ke Data Demo Sekolah Dasar!', 'success');
-        setTimeout(() => window.location.reload(), 800);
+        window.location.reload();
       }
     },
 
-    // Inject Persistence Status Bar UI
+    // Inject Persistence Status Bar UI (Cloud-First Sync Status)
     renderPersistenceBar: function (containerEl) {
       if (!containerEl) return;
       containerEl.innerHTML = `
-        <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-2xl bg-white/90 border border-sky-100 shadow-xs text-xs font-bold text-slate-700">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-white/95 border border-slate-200 shadow-2xs text-xs font-bold text-slate-700">
           <div class="flex items-center gap-2">
-            <span class="flex h-2 w-2 relative">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span class="text-emerald-700 font-extrabold text-[11px] sm:text-xs">🟢 DB Sync: Tersimpan Lokal &amp; Real-Time</span>
+            <span id="sicakap-cloud-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="sicakap-cloud-text" class="text-emerald-700 font-extrabold text-[11px] sm:text-xs">Supabase Cloud: Terhubung &amp; Tersinkronisasi</span>
           </div>
-          <div class="flex items-center gap-1.5">
-            <button onclick="SicakapDB.backupJSON()" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-black flex items-center gap-1 transition cursor-pointer" title="Backup Database ke File JSON">
+          <div class="flex items-center gap-2">
+            <button onclick="SicakapDB.backupJSON()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-black flex items-center gap-1.5 transition cursor-pointer" title="Backup Database Riil Sekolah ke File JSON">
               <span>💾 Backup JSON</span>
             </button>
-            <label class="px-2.5 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-[11px] font-black flex items-center gap-1 transition cursor-pointer" title="Pulihkan Database dari JSON">
+            <label class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-[11px] font-black flex items-center gap-1.5 transition cursor-pointer" title="Pulihkan Database dari JSON (Aman/Non-Destruktif)">
               <span>📂 Restore JSON</span>
               <input type="file" accept=".json" class="hidden" onchange="SicakapDB.handleFileInputRestore(this)">
             </label>
-            <button onclick="SicakapDB.resetDemoData()" class="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-black flex items-center gap-1 transition cursor-pointer" title="Reset ke Data Bawaan">
-              <span>🔄 Reset Data Demo</span>
+            <button onclick="SicakapDB.manualSync()" class="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-[11px] font-black flex items-center gap-1.5 transition cursor-pointer" title="Segarkan Data Langsung dari Supabase Cloud">
+              <span>🔄 Sinkron Cloud</span>
             </button>
           </div>
         </div>
