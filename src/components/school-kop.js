@@ -139,3 +139,4 @@ class SchoolKopHeaderElement extends HTMLElement {
 if (typeof window !== 'undefined' && !customElements.get('school-kop-header')) {
   customElements.define('school-kop-header', SchoolKopHeaderElement);
 }
+
