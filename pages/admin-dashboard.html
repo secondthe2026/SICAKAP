@@ -2364,10 +2364,11 @@
               <button onclick="copyAdminStudentCredentials('${s.nama}', '${rombelName}', '${s.nisn}', '${s.password}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer" title="Salin Akun Login Siswa (NISN & Password)">
                 📋 Salin
               </button>
-              <button onclick="resetAdminSiswaPassword('${s.id}', '${s.nama}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs transition cursor-pointer" title="Reset Password Siswa">
-                🔑 Reset Sandi
+              <button onclick="resetAdminSiswaPassword('${s.id}', '${(s.nama || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs transition cursor-pointer flex items-center gap-1" title="Reset Password / Aktifkan Akun Supabase Auth">
+                <span>🔑</span>
+                <span>Reset / Aktifkan</span>
               </button>
-              <button onclick="deleteAdminSiswa('${s.id}', '${s.nama}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition cursor-pointer" title="Hapus Siswa">
+              <button onclick="deleteAdminSiswa('${s.id}', '${(s.nama || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition cursor-pointer" title="Hapus Siswa">
                 🗑️
               </button>
             </td>
@@ -2388,25 +2389,51 @@
     }
 
     async function resetAdminSiswaPassword(id, nama) {
-      const siswa = SicakapDB.getSiswa().find(s => s.id === id || s.nisn === id);
-      const nisn = siswa ? siswa.nisn : id;
-      const randomNum = Math.floor(1000 + Math.random() * 9000);
-      const newPwd = `CAKAP-${randomNum}`;
+      const siswa = (SicakapDB.getSiswa() || []).find(s => String(s.id) === String(id) || s.nisn === id) || {};
+      const targetNama = nama || siswa.nama || 'Siswa SD';
+      const nisn = siswa.nisn || id;
+      const defaultPwd = (nisn && String(nisn).length >= 6) ? nisn : 'cakap2026';
 
-      try {
-        if (window.supabase) {
-          await window.supabase.rpc('admin_reset_student_password', {
-            p_nisn: nisn,
-            p_new_password: newPwd
-          });
-        }
-      } catch (err) {
-        console.warn('[Admin] Reset password cloud error:', err);
+      const newPass = prompt(`Reset kata sandi & aktifkan akun login Supabase untuk siswa "${targetNama}".\nMasukkan kata sandi baru (minimal 6 karakter):`, defaultPwd);
+      if (!newPass) return;
+      if (newPass.trim().length < 6) {
+        showToast('❌ Kata sandi minimal 6 karakter.');
+        return;
       }
 
-      SicakapDB.updateSiswa(id, { password: newPwd });
-      renderAdminSiswaTable();
-      showToast(`Password siswa "${nama}" berhasil direset ke "${newPwd}"!`);
+      showToast(`⏳ Memproses reset kata sandi & aktivasi Supabase Auth untuk ${targetNama}...`);
+
+      try {
+        const { data: sessionData } = await window.supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error('Sesi admin tidak ditemukan. Silakan refresh halaman.');
+
+        const res = await fetch('/api/students/reset-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            student_id: id,
+            nisn: nisn,
+            new_password: newPass.trim()
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || 'Gagal mereset kata sandi siswa');
+        }
+
+        SicakapDB.updateSiswa(id, { password: newPass.trim(), initial_password: newPass.trim() });
+        renderAdminSiswaTable();
+        showToast(`✅ ${json.message || `Password siswa "${targetNama}" berhasil direset ke "${newPass.trim()}"!`}`);
+      } catch (err) {
+        console.error('[Admin] Reset password siswa error:', err);
+        showToast(`❌ Gagal reset kata sandi: ${err.message}`);
+        alert(`Gagal reset kata sandi: ${err.message}`);
+      }
     }
 
     function deleteAdminSiswa(id, nama) {

@@ -1981,8 +1981,8 @@
               <button onclick="copyStudentCredentials('${s.nama}', '${activeKelas}', '${s.nisn}', '${s.password}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition cursor-pointer" title="Salin Akun Login Siswa (NISN & Password)">
                 📋 Salin
               </button>
-              <button onclick="openEditPassword('${s.id}', '${s.nama}', '${s.password}')" class="px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 font-bold text-xs transition cursor-pointer" title="Edit Password Siswa">
-                ✏️ Sandi
+              <button onclick="openEditPassword('${s.id}', '${(s.nama || '').replace(/'/g, "\\'")}', '${s.password}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs transition cursor-pointer" title="Reset Password / Aktifkan Akun Supabase Auth">
+                🔑 Reset / Aktifkan
               </button>
               <button onclick="editSiswa('${s.id}')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer" title="Edit Profil Siswa">
                 ✏️
@@ -2081,7 +2081,7 @@
       const rawNisn = document.getElementById('siswa-nisn').value;
       const nisn = String(rawNisn || '').trim().replace(/\s+/g, '');
       const nama = document.getElementById('siswa-nama').value.trim();
-      const password = document.getElementById('siswa-password').value.trim();
+      let password = document.getElementById('siswa-password').value.trim();
 
       // Validasi NISN berupa angka minimal 4 digit
       if (!/^\d{4,20}$/.test(nisn)) {
@@ -2089,100 +2089,96 @@
         return;
       }
 
-      // Validasi Password minimal 6 karakter
-      if (password.length < 6) {
-        showToast('Password minimal 6 karakter!');
-        return;
+      // Password fallback: jika kosong atau < 6, gunakan NISN jika length >= 6, else cakap2026
+      if (!password || password.length < 6) {
+        password = (nisn.length >= 6) ? nisn : 'cakap2026';
       }
 
-      const userProfile = window.__SICAKAP_USER__?.profile;
-      const schoolId = userProfile?.school_id || null;
-
-      if (editId) {
-        try {
-          if (window.supabase) {
-            await window.supabase.rpc('admin_reset_student_password', {
-              p_nisn: nisn,
-              p_new_password: password
-            });
-            await window.supabase.from('profiles').update({
-              full_name: nama,
-              identifier: nisn,
-              updated_at: new Date().toISOString()
-            }).eq('identifier', nisn);
-          }
-        } catch (err) {
-          console.warn('[Guru] Update profil/password siswa error:', err);
-        }
-
-        SicakapDB.updateSiswa(editId, { rombelId, kelas: activeKelas, class_name: activeKelas, nisn, nama, password });
-        showToast(`Data murid "${nama}" (${activeKelas}) berhasil diperbarui!`);
-      } else {
-        // Mode Tambah Baru (ANTI AUTO-LOGOUT GURU)
-        try {
-          if (window.supabase) {
-            const { data: rpcRes, error: rpcErr } = await window.supabase.rpc('admin_create_student', {
-              p_nisn: nisn,
-              p_full_name: nama,
-              p_password: password,
-              p_kelas: activeKelas,
-              p_school_id: schoolId
-            });
-
-            if (rpcErr || !rpcRes?.success) {
-              console.warn('[Guru] RPC admin_create_student fallback to unpersisted client:', rpcErr);
-              // Fallback client terpisah tanpa persistSession agar sesi Guru tidak keluar
-              if (typeof window.createUnpersistedAuthClient === 'function' && typeof window.nisnToAuthEmail === 'function') {
-                const tempAuth = window.createUnpersistedAuthClient();
-                const authEmail = window.nisnToAuthEmail(nisn);
-                const { data: authData, error: authErr } = await tempAuth.auth.signUp({
-                  email: authEmail,
-                  password: password,
-                  options: {
-                    data: {
-                      full_name: nama,
-                      role: 'siswa',
-                      identifier: nisn,
-                      kelas: activeKelas,
-                      school_id: schoolId
-                    }
-                  }
-                });
-
-                if (!authErr && authData?.user) {
-                  await window.supabase.from('profiles').upsert({
-                    id: authData.user.id,
-                    school_id: schoolId,
-                    role: 'siswa',
-                    full_name: nama,
-                    identifier: nisn,
-                    kelas: activeKelas,
-                    class_name: activeKelas,
-                    is_active: true
-                  }, { onConflict: 'id' });
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('[Guru] Pendaftaran auth siswa error:', err);
-        }
-
-        SicakapDB.addSiswa({
-          rombelId,
-          kelas: activeKelas,
-          class_name: activeKelas,
-          nisn,
-          nama,
-          password,
-          statusUjian: 'Belum Ujian'
-        });
-
-        showToast(`Siswa "${nama}" (${activeKelas}) dengan NISN ${nisn} berhasil didaftarkan!`);
+      const saveBtn = e.target.querySelector('button[type="submit"]');
+      const origBtnHtml = saveBtn ? saveBtn.innerHTML : '';
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> Mendaftarkan ke Supabase Auth...';
       }
 
-      closeModal('modal-add-student');
-      initGuruData();
+      try {
+        const { data: sessionData } = await window.supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error('Sesi login guru tidak ditemukan. Silakan refresh halaman.');
+
+        if (editId) {
+          // Update / Reset password via API server
+          const res = await fetch('/api/students/reset-password', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              student_id: editId,
+              nisn: nisn,
+              new_password: password
+            })
+          });
+
+          const json = await res.json();
+          if (!res.ok || !json.ok) {
+            throw new Error(json.error || 'Gagal memperbarui data siswa');
+          }
+
+          SicakapDB.updateSiswa(editId, { rombelId, kelas: activeKelas, class_name: activeKelas, nisn, nama, password });
+          showToast(`✅ Data murid "${nama}" (${activeKelas}) berhasil diperbarui!`);
+        } else {
+          // Pendaftaran akun siswa baru langsung ke Supabase Auth & Profiles via API Serverless
+          const res = await fetch('/api/students/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              nisn,
+              nama,
+              rombel_id: activeKelas,
+              kelas: activeKelas,
+              password
+            })
+          });
+
+          const json = await res.json();
+          if (!res.ok || !json.ok) {
+            throw new Error(json.error || 'Gagal mendaftarkan siswa ke server.');
+          }
+
+          const createdStudent = json.student || {};
+          SicakapDB.addSiswa({
+            id: createdStudent.id || ('SIS-' + Date.now()),
+            rombelId,
+            kelas: createdStudent.kelas || activeKelas,
+            class_name: createdStudent.kelas || activeKelas,
+            nisn: createdStudent.nisn || nisn,
+            nama: createdStudent.nama || nama,
+            password: createdStudent.password || password,
+            statusUjian: 'Belum Ujian'
+          });
+
+          // Otomatis salin kredensial agar mudah dibagikan
+          copyStudentCredentials(createdStudent.nama || nama, activeKelas, createdStudent.nisn || nisn, createdStudent.password || password);
+          showToast(`✅ ${json.message || `Siswa "${nama}" berhasil didaftarkan!`}`);
+        }
+
+        closeModal('modal-add-student');
+        initGuruData();
+      } catch (err) {
+        console.error('[Guru] Simpan siswa error:', err);
+        showToast(`❌ Gagal: ${err.message}`);
+        alert(`Gagal menyimpan data siswa: ${err.message}`);
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = origBtnHtml;
+        }
+      }
     }
 
     function deleteSiswa(id, nama) {
@@ -2237,24 +2233,44 @@
         showToast('Password minimal 6 karakter!');
         return;
       }
-      const siswa = SicakapDB.getSiswa().find(s => s.id === id || s.nisn === id);
-      const nisn = siswa ? siswa.nisn : id;
+      const siswa = (SicakapDB.getSiswa() || []).find(s => String(s.id) === String(id) || s.nisn === id) || {};
+      const nisn = siswa.nisn || id;
+      const nama = siswa.nama || 'Siswa';
+
+      showToast(`⏳ Mengaktifkan / mereset kata sandi siswa ${nama}...`);
 
       try {
-        if (window.supabase) {
-          await window.supabase.rpc('admin_reset_student_password', {
-            p_nisn: nisn,
-            p_new_password: password
-          });
-        }
-      } catch (err) {
-        console.warn('[Guru] Reset password cloud sync warning:', err);
-      }
+        const { data: sessionData } = await window.supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error('Sesi guru tidak ditemukan. Silakan refresh halaman.');
 
-      SicakapDB.updateSiswa(id, { password });
-      closeModal('modal-edit-password');
-      renderSiswaTable();
-      showToast(`Password siswa berhasil diubah menjadi "${password}"!`);
+        const res = await fetch('/api/students/reset-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            student_id: id,
+            nisn: nisn,
+            new_password: password
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || 'Gagal mereset kata sandi siswa');
+        }
+
+        SicakapDB.updateSiswa(id, { password, initial_password: password });
+        closeModal('modal-edit-password');
+        renderSiswaTable();
+        showToast(`✅ ${json.message || `Password siswa ${nama} berhasil direset ke "${password}"!`}`);
+      } catch (err) {
+        console.error('[Guru] Reset password siswa error:', err);
+        showToast(`❌ Gagal reset password: ${err.message}`);
+        alert(`Gagal reset password: ${err.message}`);
+      }
     }
 
     // 3. JADWAL ULANGAN (ISOLASI KELAS GURU)

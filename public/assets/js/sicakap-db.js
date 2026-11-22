@@ -912,7 +912,13 @@
         siswa.password = this.generateStudentPassword(siswa.nama, siswa.nisn, rombel ? rombel.namaRombel : '');
       }
       siswa.updatedAt = new Date().toISOString().slice(0, 10);
-      list.push(siswa);
+
+      const existingIdx = list.findIndex(s => String(s.id) === String(siswa.id) || String(s.nisn).trim() === String(siswa.nisn).trim());
+      if (existingIdx !== -1) {
+        list[existingIdx] = { ...list[existingIdx], ...siswa };
+      } else {
+        list.push(siswa);
+      }
       this.saveSiswa(list);
 
       if (typeof window !== 'undefined' && window.supabase) {

@@ -26,7 +26,20 @@ export const supabase = createClient(
  */
 export function nisnToAuthEmail(nisn) {
   const cleanNisn = String(nisn || '').trim().replace(/\s+/g, '');
-  return `${cleanNisn}@siswa.sicakap.local`;
+  return `${cleanNisn.toLowerCase()}@siswa.sicakap.local`;
+}
+
+/**
+ * Helper terpadu konversi identifier login (NISN / Email)
+ * Digunakan seragam oleh API server dan Halaman Login
+ */
+export function normalizeLoginIdentifier(input) {
+  const clean = String(input || '').trim().toLowerCase();
+  if (clean.includes('@')) {
+    return clean;
+  }
+  const sanitized = clean.replace(/[^a-z0-9._-]/g, '');
+  return `${sanitized}@siswa.sicakap.local`;
 }
 
 /**
@@ -63,6 +76,7 @@ export function createUnpersistedAuthClient() {
 
 if (typeof window !== 'undefined') {
   window.nisnToAuthEmail = nisnToAuthEmail;
+  window.normalizeLoginIdentifier = normalizeLoginIdentifier;
   window.teacherToAuthEmail = teacherToAuthEmail;
   window.createUnpersistedAuthClient = createUnpersistedAuthClient;
 }

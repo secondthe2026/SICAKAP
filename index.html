@@ -860,30 +860,46 @@
           throw new Error('Koneksi Supabase belum siap');
         }
 
-        const authEmail = window.nisnToAuthEmail ? window.nisnToAuthEmail(cleanNisn) : `${cleanNisn}@siswa.sicakap.local`;
-        const { data, error } = await window.supabase.auth.signInWithPassword({
+        const authEmail = window.normalizeLoginIdentifier 
+          ? window.normalizeLoginIdentifier(cleanNisn) 
+          : (window.nisnToAuthEmail ? window.nisnToAuthEmail(cleanNisn) : `${cleanNisn}@siswa.sicakap.local`);
+
+        let { data, error } = await window.supabase.auth.signInWithPassword({
           email: authEmail,
           password: password,
         });
 
+        // Fallback coba domain alternatif (@siswa.sicakap.id) jika format awal gagal
+        if ((error || !data?.user) && authEmail.endsWith('@siswa.sicakap.local')) {
+          const altEmail = `${cleanNisn.toLowerCase()}@siswa.sicakap.id`;
+          const retry = await window.supabase.auth.signInWithPassword({
+            email: altEmail,
+            password: password,
+          });
+          if (retry.data?.user) {
+            data = retry.data;
+            error = null;
+          }
+        }
+
         if (error || !data?.user) {
-          throw new Error('NISN atau password salah. Hubungi guru kelas kamu.');
+          throw new Error('NISN atau password salah. Pastikan akun sudah diaktifkan oleh Wali Kelas / Admin.');
         }
 
         const { data: profile, error: profErr } = await window.supabase
           .from('profiles')
           .select('id, school_id, role, full_name, identifier, class_name, kelas, is_active, schools(name, is_active)')
           .eq('id', data.user.id)
-          .single();
+          .maybeSingle();
 
         if (profErr || !profile || profile.role !== 'siswa') {
           await window.supabase.auth.signOut();
-          throw new Error('NISN atau password salah. Hubungi guru kelas kamu.');
+          throw new Error('Data profil siswa tidak ditemukan atau bukan role siswa.');
         }
 
         if (!profile.is_active) {
           await window.supabase.auth.signOut();
-          throw new Error('Akun siswa kamu dinonaktifkan. Hubungi guru kelas kamu.');
+          throw new Error('Akun siswa kamu sedang dinonaktifkan. Hubungi guru kelas kamu.');
         }
 
         if (profile.schools && profile.schools.is_active === false) {
@@ -907,8 +923,8 @@
       } catch (err) {
         feedback.classList.add('hidden');
         let safeMsg = err.message || 'NISN atau password salah. Hubungi guru kelas kamu.';
-        if (safeMsg.includes('@') || safeMsg.toLowerCase().includes('email') || safeMsg.toLowerCase().includes('invalid login')) {
-          safeMsg = 'NISN atau password salah. Hubungi guru kelas kamu.';
+        if (safeMsg.includes('@') || safeMsg.toLowerCase().includes('invalid login credentials')) {
+          safeMsg = 'NISN atau kata sandi tidak cocok. Pastikan akun sudah didaftarkan Wali Kelas.';
         }
         showToast(`❌ ${safeMsg}`);
       }

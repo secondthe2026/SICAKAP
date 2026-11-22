@@ -1192,6 +1192,23 @@ BEGIN
           FOR ALL USING (public.get_my_role() = 'superadmin')
           WITH CHECK (public.get_my_role() = 'superadmin');
     END IF;
+
+    -- Proteksi RLS Aditif Siswa: Memulai & Mengirim Ujian Sendiri
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'exam_sessions' AND policyname = 'siswa_insert_own_session') THEN
+        CREATE POLICY "siswa_insert_own_session" ON public.exam_sessions
+          FOR INSERT WITH CHECK (
+            student_id = auth.uid()
+            AND school_id = public.get_my_school_id()
+          );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'exam_results' AND policyname = 'siswa_insert_own_result') THEN
+        CREATE POLICY "siswa_insert_own_result" ON public.exam_results
+          FOR INSERT WITH CHECK (
+            student_id = auth.uid()
+            AND school_id = public.get_my_school_id()
+          );
+    END IF;
 END $$;
 
 
