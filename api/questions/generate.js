@@ -52,7 +52,7 @@ async function getAvailableFlashModels(apiKey) {
   }
 
   // Fallback aman default tanpa model usang
-  return ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+  return ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
 }
 
 export default async function handler(req, res) {
@@ -191,7 +191,7 @@ KEMBALIKAN HANYA JSON ARRAY OBJEK dengan struktur persis seperti ini:
     }
 
     // Default cadangan jika belum ada
-    const safeDefaults = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+    const safeDefaults = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
     for (const m of safeDefaults) {
       if (!candidateModels.includes(m)) candidateModels.push(m);
     }
