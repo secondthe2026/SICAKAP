@@ -100,25 +100,48 @@ async function executeGenerateAiQuestions() {
     const token = sessionData?.session?.access_token;
     if (!token) throw new Error('Sesi login telah berakhir. Silakan muat ulang halaman.');
 
-    const res = await fetch('/api/questions/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        mapel,
-        kelas,
-        topik,
-        materiReferensi,
-        jumlah,
-        tingkatKesulitan
-      })
-    });
+    const clientController = new AbortController();
+    const clientTimeout = setTimeout(() => clientController.abort(), 65000);
 
-    const json = await res.json();
+    let res;
+    try {
+      res = await fetch('/api/questions/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        signal: clientController.signal,
+        body: JSON.stringify({
+          mapel,
+          kelas,
+          topik,
+          materiReferensi,
+          jumlah,
+          tingkatKesulitan
+        })
+      });
+    } catch (fetchErr) {
+      if (fetchErr.name === 'AbortError') {
+        throw new Error('Waktu permintaan habis (>60 detik). Coba kurangi jumlah butir soal menjadi 5.');
+      }
+      throw new Error(`Koneksi ke server gagal (${fetchErr.message}). Silakan klik tombol coba lagi.`);
+    } finally {
+      clearTimeout(clientTimeout);
+    }
+
+    let json;
+    try {
+      json = await res.json();
+    } catch (jsonErr) {
+      if (res.status === 504) {
+        throw new Error('Waktu server Vercel habis (504 Gateway Timeout). Coba kurangi jumlah butir soal.');
+      }
+      throw new Error(`Server mengembalikan status HTTP ${res.status} (${res.statusText || 'Gagal membaca respons server'}).`);
+    }
+
     if (!res.ok || !json.ok) {
-      throw new Error(json.error || 'Gagal menghasilkan butir soal dari AI.');
+      throw new Error(json.error || `Gagal menghasilkan butir soal dari AI (HTTP ${res.status}).`);
     }
 
     aiGeneratedQuestionsList = (json.questions || []).map(q => ({
