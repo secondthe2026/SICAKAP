@@ -55,6 +55,26 @@
           window.__ACTIVE_GURU_KELAS__ = teacherKelas;
           window.__ACTIVE_GURU_GRADE__ = teacherGrade;
 
+          if (p.schools) {
+            window.__ACTIVE_SCHOOL_PROFILE__ = p.schools;
+            if (window.SicakapDB) {
+              window.SicakapDB.saveProfilSekolah({
+                namaSekolah: p.schools.name || '',
+                npsn: p.schools.npsn || '',
+                nss: p.schools.nss || '',
+                alamat: p.schools.alamat || p.schools.kabupaten || '',
+                kepsekNama: p.schools.kepala_sekolah || '',
+                kepsek: p.schools.kepala_sekolah || '',
+                kepsekNip: p.schools.nip_kepsek || '',
+                nipKepsek: p.schools.nip_kepsek || '',
+                tahunPelajaran: p.schools.tahun_pelajaran || '2026/2027',
+                semester: p.schools.semester || 'Semester Ganjil',
+                logoUrl: p.schools.logo_url || '',
+                logo: p.schools.logo_url || ''
+              });
+            }
+          }
+
           const nameEl = document.getElementById('guru-header-name');
           const emailEl = document.getElementById('guru-header-email');
           const dropName = document.getElementById('dropdown-guru-name');
@@ -248,7 +268,7 @@
       <!-- Footer Info -->
       <div class="p-4 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 space-y-1">
         <p id="sidebar-guru-tahun-pelajaran" class="font-black text-slate-800">Tahun Ajaran 2026/2027 SD</p>
-        <p id="sidebar-guru-nama-sekolah" class="text-teal-700 font-bold">• SDN 1 Nusantara</p>
+        <p id="sidebar-guru-nama-sekolah" class="text-teal-700 font-bold"></p>
       </div>
     </aside>
 
@@ -3810,9 +3830,11 @@
 
       // Sidebar Footer Sync (Tahun Pelajaran & Nama Sekolah)
       const profil = SicakapDB.getProfilSekolah();
-      if (profil) {
-        setText('sidebar-guru-tahun-pelajaran', `Tahun Ajaran ${profil.tahunPelajaran || '2026/2027 SD'} (${profil.semester || 'Ganjil'})`);
-        setText('sidebar-guru-nama-sekolah', `• ${profil.namaSekolah || 'SDN 1 Nusantara'}`);
+      const activeSchool = window.__ACTIVE_SCHOOL_PROFILE__;
+      const displaySchoolName = activeSchool?.name || profil?.namaSekolah || '';
+      if (profil || activeSchool) {
+        setText('sidebar-guru-tahun-pelajaran', `Tahun Ajaran ${activeSchool?.tahun_pelajaran || profil?.tahunPelajaran || '2026/2027'} (${activeSchool?.semester || profil?.semester || 'Ganjil'})`);
+        setText('sidebar-guru-nama-sekolah', displaySchoolName ? `• ${displaySchoolName}` : '');
       }
     }
 

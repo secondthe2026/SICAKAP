@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS public.schools (
 ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS nss TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS alamat TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS kepala_sekolah TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS nip_kepsek TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS tahun_pelajaran TEXT DEFAULT '2026/2027';
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'Semester Ganjil';
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS logo_url TEXT;
 
 -- B. TABEL PROFILES
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -277,6 +284,26 @@ CREATE TRIGGER trg_protect_session_fields
   BEFORE UPDATE ON public.exam_sessions
   FOR EACH ROW EXECUTE FUNCTION public.protect_exam_session_fields();
 
+CREATE OR REPLACE FUNCTION public.protect_school_status_fields()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() != 'superadmin' THEN
+    IF NEW.is_active IS DISTINCT FROM OLD.is_active
+       OR NEW.approval_status IS DISTINCT FROM OLD.approval_status
+       OR NEW.approved_at IS DISTINCT FROM OLD.approved_at
+       OR NEW.rejection_reason IS DISTINCT FROM OLD.rejection_reason THEN
+      RAISE EXCEPTION 'Akses ditolak: Hanya Superadmin yang berhak mengubah status aktivasi atau approval sekolah.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_school_status ON public.schools;
+CREATE TRIGGER trg_protect_school_status
+  BEFORE UPDATE ON public.schools
+  FOR EACH ROW EXECUTE FUNCTION public.protect_school_status_fields();
+
 -- ============================================================
 -- 8. AKTIFKAN ROW LEVEL SECURITY (RLS) DI SELURUH TABEL
 -- ============================================================
@@ -294,12 +321,19 @@ ALTER TABLE public.proctor_logs ENABLE ROW LEVEL SECURITY;
 -- 9. PENERAPAN POLICY BARU (100% SESUAI RBAC-SICAKAP.MD)
 -- ============================================================
 
--- A. SCHOOLS: Superadmin Only untuk Approval
+-- A. SCHOOLS: Superadmin All, Member Read Own, Admin Update Own
 CREATE POLICY "superadmin_all_schools" ON public.schools
   FOR ALL USING (public.get_my_role() = 'superadmin');
 
 CREATE POLICY "school_members_read_own_school" ON public.schools
   FOR SELECT USING (id = public.get_my_school_id());
+
+CREATE POLICY "admin_update_own_school" ON public.schools
+  FOR UPDATE USING (
+    id = public.get_my_school_id() AND public.get_my_role() = 'admin_sekolah'
+  ) WITH CHECK (
+    id = public.get_my_school_id() AND public.get_my_role() = 'admin_sekolah'
+  );
 
 -- B. PROFILES
 CREATE POLICY "users_read_own_profile" ON public.profiles
@@ -1008,6 +1042,13 @@ GRANT EXECUTE ON FUNCTION public.superadmin_clear_school_password TO authenticat
 ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS nss TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS alamat TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS kepala_sekolah TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS nip_kepsek TEXT;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS tahun_pelajaran TEXT DEFAULT '2026/2027';
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'Semester Ganjil';
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS logo_url TEXT;
 
 -- Backfill sekolah aktif yang sudah ada
 UPDATE public.schools

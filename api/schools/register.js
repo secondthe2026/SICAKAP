@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Konfigurasi Supabase URL tidak ditemukan di environment.' });
   }
 
-  const { name, npsn, jenjang, kabupaten, admin_email, password, is_active } = req.body || {};
+  const { name, npsn, jenjang, kabupaten, alamat, admin_email, password, is_active } = req.body || {};
 
   if (!name || !npsn || !admin_email || !password) {
     return res.status(400).json({ error: 'Nama sekolah, NPSN, email admin, dan kata sandi wajib diisi.' });
@@ -113,6 +113,7 @@ export default async function handler(req, res) {
           npsn: cleanNpsn,
           jenjang: jenjang || 'SD',
           kabupaten: kabupaten ? kabupaten.trim() : null,
+          alamat: (alamat || kabupaten) ? String(alamat || kabupaten).trim() : null,
           is_active: finalIsActive,
           approval_status: finalApprovalStatus,
           approved_at: finalIsActive ? new Date().toISOString() : null,

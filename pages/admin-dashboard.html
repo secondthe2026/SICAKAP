@@ -34,6 +34,10 @@
       try {
         const session = await getCurrentUserProfile();
         if (session?.profile) {
+          window.__ADMIN_SESSION__ = session;
+          if (session.profile.schools) {
+            window.__ACTIVE_SCHOOL_PROFILE__ = session.profile.schools;
+          }
           const p = session.profile;
           const schoolName = p.schools?.name || 'Sekolah';
           const nameEl = document.getElementById('admin-header-name');
@@ -123,8 +127,8 @@
             ADM
           </div>
           <div class="hidden xl:block text-left">
-            <p id="admin-header-name" class="text-xs font-black text-slate-900 leading-tight">Admin SDN 1 Nusantara</p>
-            <p id="admin-header-email" class="text-[10px] text-slate-500 font-mono">admin@sdn1nusantara.sch.id</p>
+            <p id="admin-header-name" class="text-xs font-black text-slate-900 leading-tight">Admin Sekolah</p>
+            <p id="admin-header-email" class="text-[10px] text-slate-500 font-mono">admin@sekolah.sch.id</p>
           </div>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 hidden xl:block"></i>
         </button>
@@ -253,7 +257,10 @@
         </div>
         <div class="flex items-center justify-between">
           <span>Basis Data</span>
-          <span class="font-bold text-emerald-600 font-mono">localStorage OK</span>
+          <span id="sidebar-db-status" class="font-bold text-emerald-600 font-mono flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+            <span>Supabase Cloud</span>
+          </span>
         </div>
       </div>
     </aside>
@@ -391,7 +398,7 @@
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                 <span>Kosongkan Semua</span>
               </button>
-              <p class="text-xs text-slate-500 font-bold hidden sm:block">Data tersinkron otomatis ke LocalStorage</p>
+              <p class="text-xs text-slate-500 font-bold hidden sm:block">Data tersinkron otomatis ke Supabase Cloud</p>
             </div>
           </div>
 
@@ -840,9 +847,9 @@
             <p class="text-xs sm:text-sm text-slate-500 mt-1">Data identitas satuan pendidikan, kepala sekolah, tahun pelajaran aktif, dan logo kop resmi untuk kartu ujian serta dokumen cetak.</p>
           </div>
           <div class="flex items-center gap-2">
-            <button type="button" onclick="resetProfilSekolahDefault()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer transition">
-              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-slate-500"></i>
-              <span>Reset Default</span>
+            <button type="button" onclick="resetProfilSekolahDefault()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs cursor-pointer transition" title="Muat ulang profil asli sekolah dari Supabase Cloud">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-indigo-600"></i>
+              <span>Segarkan dari Cloud</span>
             </button>
           </div>
         </div>
@@ -855,13 +862,16 @@
                 <i data-lucide="building-2" class="w-4 h-4 text-indigo-600"></i>
                 <span>Form Identitas Satuan Pendidikan SD</span>
               </h2>
-              <span class="text-[11px] font-mono text-slate-400">LocalStorage: 'sicakap_profil_sekolah'</span>
+              <span id="profil-cloud-badge" class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px] flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="profil-cloud-status-text">Supabase Cloud</span>
+              </span>
             </div>
 
             <form onsubmit="handleSaveProfilSekolah(event)" class="space-y-4 text-xs">
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Nama Lengkap Sekolah / Madrasah <span class="text-rose-500">*</span></label>
-                <input type="text" id="profil-nama-sekolah" required placeholder="Contoh: SDN 1 Nusantara" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400" />
+                <input type="text" id="profil-nama-sekolah" required placeholder="Masukkan nama resmi sekolah..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-400" />
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -949,13 +959,13 @@
                   </div>
                   <div class="text-left">
                     <p class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">PEMERINTAH DAERAH / YAYASAN PENDIDIKAN</p>
-                    <h3 id="preview-kop-nama" class="font-black text-sm uppercase text-slate-900 tracking-wide">SDN 1 NUSANTARA</h3>
-                    <p id="preview-kop-npsn" class="text-[10px] font-mono font-bold text-slate-600">NPSN: 20104567 • NSS: 101056001001</p>
+                    <h3 id="preview-kop-nama" class="font-black text-sm uppercase text-slate-900 tracking-wide">NAMA SATUAN PENDIDIKAN</h3>
+                    <p id="preview-kop-npsn" class="text-[10px] font-mono font-bold text-slate-600">NPSN: - • NSS: -</p>
                   </div>
                 </div>
                 <div class="border-t-2 border-slate-900 my-1.5"></div>
                 <p id="preview-kop-alamat" class="text-[10px] text-slate-600 font-medium leading-relaxed">
-                  Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan
+                  Alamat satuan pendidikan belum dilengkapi
                 </p>
               </div>
 
@@ -963,15 +973,15 @@
                 <span class="font-bold text-indigo-900 block">Penanggung Jawab Ujian / Kepala Sekolah:</span>
                 <div class="flex items-center justify-between text-[11px]">
                   <span class="text-slate-500 font-medium">Kepala Sekolah:</span>
-                  <span id="preview-kop-kepsek" class="font-black text-slate-800">Drs. H. Mulyadi, M.Pd.</span>
+                  <span id="preview-kop-kepsek" class="font-black text-slate-800">Kepala Sekolah (Belum diatur)</span>
                 </div>
                 <div class="flex items-center justify-between text-[11px]">
                   <span class="text-slate-500 font-medium">NIP Kepsek:</span>
-                  <span id="preview-kop-nip" class="font-mono font-bold text-slate-700">196803121992031004</span>
+                  <span id="preview-kop-nip" class="font-mono font-bold text-slate-700">-</span>
                 </div>
                 <div class="flex items-center justify-between text-[11px] pt-1 border-t border-indigo-200/50">
                   <span class="text-slate-500 font-medium">Tahun &amp; Semester:</span>
-                  <span id="preview-kop-tapel" class="font-bold text-indigo-800">2026/2027 SD (Ganjil)</span>
+                  <span id="preview-kop-tapel" class="font-bold text-indigo-800">2026/2027 (Semester Ganjil)</span>
                 </div>
               </div>
             </div>
@@ -1011,8 +1021,8 @@
               ADM
             </div>
             <div>
-              <h3 id="akun-admin-nama-display" class="font-black text-base text-slate-900">Admin SDN 1 Nusantara</h3>
-              <p id="akun-admin-email-display" class="text-xs text-slate-500 font-mono">admin@sdn1nusantara.sch.id</p>
+              <h3 id="akun-admin-nama-display" class="font-black text-base text-slate-900">Administrator Sekolah</h3>
+              <p id="akun-admin-email-display" class="text-xs text-slate-500 font-mono">admin@sekolah.sch.id</p>
               <span class="inline-block mt-1 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
                 Akses Penuh: Kendali Guru, Rombel, &amp; CBT SD
               </span>
@@ -1022,13 +1032,13 @@
           <form onsubmit="handleSaveAkunAdmin(event)" class="space-y-4 text-xs">
             <div>
               <label class="block font-bold text-slate-700 mb-1">Nama Tampilan Administrator <span class="text-rose-500">*</span></label>
-              <input type="text" id="akun-admin-nama" required placeholder="Contoh: Admin SDN 1 Nusantara" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+              <input type="text" id="akun-admin-nama" required placeholder="Contoh: Admin SD..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Email Resmi Admin <span class="text-rose-500">*</span></label>
-                <input type="email" id="akun-admin-email" required placeholder="admin@sdn1nusantara.sch.id" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
+                <input type="email" id="akun-admin-email" required placeholder="admin@sekolah.sch.id" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-indigo-100" />
               </div>
               <div>
                 <label class="block font-bold text-slate-700 mb-1">Username Login</label>
@@ -3238,10 +3248,81 @@
       }
     }
 
-    // ================= FITUR 1: MANAJEMEN PROFIL SEKOLAH =================
-    function renderProfilSekolah() {
-      const p = SicakapDB.getProfilSekolah();
-      if (!p) return;
+    // ================= FITUR 1: MANAJEMEN PROFIL SEKOLAH (SUPABASE CLOUD) =================
+    let currentSchoolData = null;
+
+    async function loadSchoolProfileFromSupabase(forceReload = false) {
+      if (currentSchoolData && !forceReload) {
+        return currentSchoolData;
+      }
+
+      try {
+        let session = window.__ADMIN_SESSION__;
+        if (!session?.profile?.school_id && window.getCurrentUserProfile) {
+          session = await window.getCurrentUserProfile();
+          window.__ADMIN_SESSION__ = session;
+        }
+
+        const schoolId = session?.profile?.school_id;
+        if (!schoolId) {
+          console.warn('[Admin] school_id tidak ditemukan pada profil user');
+          return null;
+        }
+
+        // Fetch langsung data asli dari tabel public.schools Supabase
+        const { data: school, error } = await window.supabase
+          .from('schools')
+          .select('*')
+          .eq('id', schoolId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[Admin] Gagal fetch profil sekolah dari Supabase:', error);
+          showToast(`❌ Gagal memuat profil sekolah: ${error.message}`);
+          return null;
+        }
+
+        if (school) {
+          currentSchoolData = school;
+          window.__ACTIVE_SCHOOL_PROFILE__ = school;
+
+          // Sinkronkan cache ke SicakapDB agar modul cetak dokumen & kartu ujian otomatis sinkron
+          if (window.SicakapDB) {
+            window.SicakapDB.saveProfilSekolah({
+              namaSekolah: school.name || '',
+              npsn: school.npsn || '',
+              nss: school.nss || '',
+              alamat: school.alamat || school.kabupaten || '',
+              kepsekNama: school.kepala_sekolah || '',
+              kepsek: school.kepala_sekolah || '',
+              kepsekNip: school.nip_kepsek || '',
+              nipKepsek: school.nip_kepsek || '',
+              tahunPelajaran: school.tahun_pelajaran || '2026/2027',
+              semester: school.semester || 'Semester Ganjil',
+              logoUrl: school.logo_url || '',
+              logo: school.logo_url || '',
+              kabupaten: school.kabupaten || '',
+              jenjang: school.jenjang || 'SD'
+            });
+          }
+          return school;
+        }
+      } catch (err) {
+        console.error('[Admin] Exception loadSchoolProfileFromSupabase:', err);
+      }
+      return null;
+    }
+
+    async function renderProfilSekolah() {
+      let s = currentSchoolData;
+      if (!s) {
+        s = await loadSchoolProfileFromSupabase();
+      }
+
+      if (!s && window.__ADMIN_SESSION__?.profile?.schools) {
+        s = window.__ADMIN_SESSION__.profile.schools;
+        currentSchoolData = s;
+      }
 
       const setVal = (id, val) => {
         const el = document.getElementById(id);
@@ -3252,34 +3333,70 @@
         if (el) el.textContent = val || '';
       };
 
-      setVal('profil-nama-sekolah', p.namaSekolah);
-      setVal('profil-npsn', p.npsn);
-      setVal('profil-nss', p.nss);
-      setVal('profil-alamat', p.alamat);
-      setVal('profil-kepsek-nama', p.kepsek);
-      setVal('profil-kepsek-nip', p.nipKepsek);
-      setVal('profil-tahun-pelajaran', p.tahunPelajaran);
-      setVal('profil-semester', p.semester || 'Ganjil');
-      setVal('profil-logo-url', p.logo || '');
+      if (!s) {
+        // Tampilkan formulir bersih tanpa data demo SDN 1 Nusantara
+        setVal('profil-nama-sekolah', '');
+        setVal('profil-npsn', '');
+        setVal('profil-nss', '');
+        setVal('profil-alamat', '');
+        setVal('profil-kepsek-nama', '');
+        setVal('profil-kepsek-nip', '');
+        setVal('profil-tahun-pelajaran', '2026/2027');
+        setVal('profil-semester', 'Ganjil');
+        setVal('profil-logo-url', '');
 
-      // Header update: "Admin [Nama Sekolah]"
-      setText('admin-header-name', `Admin ${p.namaSekolah || 'SDN 1 Nusantara'}`);
-
-      // Sidebar footer: "Tahun Pelajaran"
-      const sbTapel = document.getElementById('sidebar-tahun-pelajaran');
-      if (sbTapel) {
-        sbTapel.textContent = `TP ${p.tahunPelajaran || '2026/2027 SD'} • ${p.semester || 'Ganjil'}`;
+        const badgeText = document.getElementById('profil-cloud-status-text');
+        if (badgeText) badgeText.textContent = 'Supabase Cloud: Memuat...';
+        return;
       }
 
-      // Live Kop Preview
-      setText('preview-kop-nama', (p.namaSekolah || 'SDN 1 Nusantara').toUpperCase());
-      setText('preview-kop-npsn', `NPSN: ${p.npsn || '20104567'} • NSS: ${p.nss || '101056001001'}`);
-      setText('preview-kop-alamat', p.alamat || 'Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan');
-      setText('preview-kop-kepsek', p.kepsek || 'Drs. H. Mulyadi, M.Pd.');
-      setText('preview-kop-nip', p.nipKepsek || '196803121992031004');
-      setText('preview-kop-tapel', `${p.tahunPelajaran || '2026/2027 SD'} (${p.semester || 'Ganjil'})`);
+      // 1. Isi input formulir identitas
+      setVal('profil-nama-sekolah', s.name || '');
+      setVal('profil-npsn', s.npsn || '');
+      setVal('profil-nss', s.nss || '');
+      setVal('profil-alamat', s.alamat || s.kabupaten || '');
+      setVal('profil-kepsek-nama', s.kepala_sekolah || '');
+      setVal('profil-kepsek-nip', s.nip_kepsek || '');
+      setVal('profil-tahun-pelajaran', s.tahun_pelajaran || '2026/2027');
 
-      // Logo Preview
+      const semVal = (s.semester && s.semester.toLowerCase().includes('genap')) ? 'Genap' : 'Ganjil';
+      setVal('profil-semester', semVal);
+      setVal('profil-logo-url', s.logo_url || '');
+
+      // 2. Header Update: Ganti 'Admin SDN 1 Nusantara' menjadi nama sekolah asli
+      const namaInstansi = s.name || 'Sekolah';
+      setText('admin-header-name', `Admin ${namaInstansi}`);
+      const dropTitle = document.getElementById('dropdown-admin-title');
+      if (dropTitle) dropTitle.textContent = `Administrator SD • ${namaInstansi}`;
+      const akunNamaDisp = document.getElementById('akun-admin-nama-display');
+      if (akunNamaDisp) akunNamaDisp.textContent = `Admin ${namaInstansi}`;
+
+      // 3. Sidebar Footer & Status Badge
+      const sbTapel = document.getElementById('sidebar-tahun-pelajaran');
+      if (sbTapel) {
+        sbTapel.textContent = `TP ${s.tahun_pelajaran || '2026/2027'} • ${semVal === 'Genap' ? 'Semester Genap' : 'Semester Ganjil'}`;
+      }
+      const sbDbStatus = document.getElementById('sidebar-db-status');
+      if (sbDbStatus) {
+        sbDbStatus.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block mr-1"></span>
+          <span>Supabase Cloud</span>
+        `;
+      }
+      const badgeText = document.getElementById('profil-cloud-status-text');
+      if (badgeText) {
+        badgeText.textContent = `Supabase Cloud: Terhubung (${s.npsn || 'Aktif'})`;
+      }
+
+      // 4. Pratinjau Kop Dokumen Resmi (Live Preview)
+      setText('preview-kop-nama', (s.name || 'NAMA SATUAN PENDIDIKAN').toUpperCase());
+      setText('preview-kop-npsn', `NPSN: ${s.npsn || '-'} • NSS: ${s.nss || '-'}`);
+      setText('preview-kop-alamat', s.alamat || s.kabupaten || 'Alamat satuan pendidikan belum dilengkapi');
+      setText('preview-kop-kepsek', s.kepala_sekolah || 'Kepala Sekolah (Belum diisi)');
+      setText('preview-kop-nip', s.nip_kepsek ? `NIP. ${s.nip_kepsek}` : '-');
+      setText('preview-kop-tapel', `${s.tahun_pelajaran || '2026/2027'} (${semVal === 'Genap' ? 'Semester Genap' : 'Semester Ganjil'})`);
+
+      // 5. Logo Preview
       updateLogoPreviewFromInput();
     }
 
@@ -3328,51 +3445,93 @@
       reader.readAsDataURL(file);
     }
 
-    function handleSaveProfilSekolah(e) {
+    async function handleSaveProfilSekolah(e) {
       if (e) e.preventDefault();
-      const namaSekolah = document.getElementById('profil-nama-sekolah')?.value.trim() || 'SDN 1 Nusantara';
-      const npsn = document.getElementById('profil-npsn')?.value.trim() || '';
-      const nss = document.getElementById('profil-nss')?.value.trim() || '';
-      const alamat = document.getElementById('profil-alamat')?.value.trim() || '';
-      const kepsek = document.getElementById('profil-kepsek-nama')?.value.trim() || '';
-      const nipKepsek = document.getElementById('profil-kepsek-nip')?.value.trim() || '';
-      const tahunPelajaran = document.getElementById('profil-tahun-pelajaran')?.value.trim() || '2026/2027 SD';
-      const semester = document.getElementById('profil-semester')?.value || 'Ganjil';
-      const logo = document.getElementById('profil-logo-url')?.value.trim() || '';
 
-      const payload = {
-        namaSekolah,
-        npsn,
-        nss,
-        alamat,
-        kepsek,
-        nipKepsek,
-        tahunPelajaran,
-        semester,
-        logo
-      };
+      const namaSekolah = document.getElementById('profil-nama-sekolah')?.value.trim();
+      const npsn = document.getElementById('profil-npsn')?.value.trim();
+      const nss = document.getElementById('profil-nss')?.value.trim() || null;
+      const alamat = document.getElementById('profil-alamat')?.value.trim() || null;
+      const kepala_sekolah = document.getElementById('profil-kepsek-nama')?.value.trim() || null;
+      const nip_kepsek = document.getElementById('profil-kepsek-nip')?.value.trim() || null;
+      const tahun_pelajaran = document.getElementById('profil-tahun-pelajaran')?.value.trim() || '2026/2027';
+      const semesterRaw = document.getElementById('profil-semester')?.value || 'Ganjil';
+      const semester = semesterRaw === 'Genap' ? 'Semester Genap' : 'Semester Ganjil';
+      const logo_url = document.getElementById('profil-logo-url')?.value.trim() || null;
 
-      SicakapDB.saveProfilSekolah(payload);
-      renderProfilSekolah();
-      showToast('🏛️ Profil Sekolah berhasil disimpan!');
+      if (!namaSekolah || !npsn) {
+        showToast('❌ Nama Sekolah dan NPSN wajib diisi.');
+        return;
+      }
+
+      let schoolId = currentSchoolData?.id || window.__ADMIN_SESSION__?.profile?.school_id;
+      if (!schoolId && window.getCurrentUserProfile) {
+        const session = await window.getCurrentUserProfile();
+        schoolId = session?.profile?.school_id;
+      }
+
+      if (!schoolId) {
+        showToast('❌ Gagal: school_id tidak ditemukan untuk akun ini.');
+        return;
+      }
+
+      showToast('⏳ Menyimpan profil sekolah ke Supabase Cloud...');
+
+      try {
+        const { data, error } = await window.supabase
+          .from('schools')
+          .update({
+            name: namaSekolah,
+            npsn: npsn,
+            nss: nss,
+            alamat: alamat,
+            kepala_sekolah: kepala_sekolah,
+            nip_kepsek: nip_kepsek,
+            tahun_pelajaran: tahun_pelajaran,
+            semester: semester,
+            logo_url: logo_url,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', schoolId)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        currentSchoolData = data;
+        window.__ACTIVE_SCHOOL_PROFILE__ = data;
+
+        if (window.SicakapDB) {
+          window.SicakapDB.saveProfilSekolah({
+            namaSekolah: data.name,
+            npsn: data.npsn,
+            nss: data.nss || '',
+            alamat: data.alamat || '',
+            kepsekNama: data.kepala_sekolah || '',
+            kepsek: data.kepala_sekolah || '',
+            kepsekNip: data.nip_kepsek || '',
+            nipKepsek: data.nip_kepsek || '',
+            tahunPelajaran: data.tahun_pelajaran || '2026/2027',
+            semester: data.semester || 'Semester Ganjil',
+            logoUrl: data.logo_url || '',
+            logo: data.logo_url || ''
+          });
+        }
+
+        await renderProfilSekolah();
+        showToast('🏛️ Profil Sekolah berhasil disimpan ke Supabase Cloud!');
+      } catch (err) {
+        console.error('[Admin] Gagal simpan profil ke Supabase:', err);
+        showToast(`❌ Gagal menyimpan ke Supabase: ${err.message}`);
+      }
     }
 
-    function resetProfilSekolahDefault() {
-      if (!confirm('Kembalikan profil sekolah ke setelan default SDN 1 Nusantara?')) return;
-      const def = {
-        namaSekolah: 'SDN 1 Nusantara',
-        npsn: '20104567',
-        nss: '101056001001',
-        alamat: 'Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan',
-        kepsek: 'Drs. H. Mulyadi, M.Pd.',
-        nipKepsek: '196803121992031004',
-        tahunPelajaran: '2026/2027 SD',
-        semester: 'Ganjil',
-        logo: ''
-      };
-      SicakapDB.saveProfilSekolah(def);
-      renderProfilSekolah();
-      showToast('Profil sekolah direset ke default!');
+    async function resetProfilSekolahDefault() {
+      if (!confirm('Muat ulang profil asli sekolah dari Supabase Cloud dan batalkan perubahan formulir yang belum disimpan?')) return;
+      showToast('⏳ Memuat ulang data dari Supabase Cloud...');
+      await loadSchoolProfileFromSupabase(true);
+      await renderProfilSekolah();
+      showToast('✅ Profil sekolah berhasil disegarkan dari Supabase!');
     }
 
     // ================= FITUR 2: PENGATURAN AKUN ADMINISTRATOR =================
@@ -3610,6 +3769,8 @@
     window.toggleMobileSidebar = toggleMobileSidebar;
     window.setupActionListeners = setupActionListeners;
     window.renderProfilSekolah = renderProfilSekolah;
+    window.loadSchoolProfileFromSupabase = loadSchoolProfileFromSupabase;
+    window.reloadSchoolProfileFromCloud = resetProfilSekolahDefault;
     window.updateLogoPreviewFromInput = updateLogoPreviewFromInput;
     window.handleLogoFileUpload = handleLogoFileUpload;
     window.handleSaveProfilSekolah = handleSaveProfilSekolah;

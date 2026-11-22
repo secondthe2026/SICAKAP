@@ -15,35 +15,40 @@
   const SicakapExport = {
     // Info Sekolah Default
     getDefaultSekolahInfo: function () {
-      let sekolahNama = 'SD NEGERI 1 NUSANTARA';
-      let npsn = '20104567';
-      let nss = '101056001001';
-      let alamat = 'Jl. Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan';
-      let kepsekNama = 'Drs. H. Mulyadi, M.Pd.';
-      let kepsekNip = '196805121993031005';
-      let tahunAjaran = '2026/2027 SD';
-      let semester = 'Ganjil';
+      let sekolahNama = 'SATUAN PENDIDIKAN';
+      let npsn = '-';
+      let nss = '-';
+      let alamat = '';
+      let kepsekNama = 'Kepala Sekolah';
+      let kepsekNip = '-';
+      let tahunAjaran = '2026/2027';
+      let semester = 'Semester Ganjil';
       let logoUrl = '';
 
-      if (typeof window.SicakapDB !== 'undefined') {
+      // Prioritas 1: Ambil dari objek profil sekolah aktif di session Supabase
+      const liveSchool = window.__ACTIVE_SCHOOL_PROFILE__ || window.__ADMIN_SESSION__?.profile?.schools;
+      if (liveSchool && liveSchool.name) {
+        sekolahNama = (liveSchool.name || '').toUpperCase();
+        if (liveSchool.npsn) npsn = liveSchool.npsn;
+        if (liveSchool.nss) nss = liveSchool.nss;
+        if (liveSchool.alamat || liveSchool.kabupaten) alamat = liveSchool.alamat || liveSchool.kabupaten;
+        if (liveSchool.kepala_sekolah) kepsekNama = liveSchool.kepala_sekolah;
+        if (liveSchool.nip_kepsek) kepsekNip = liveSchool.nip_kepsek;
+        if (liveSchool.tahun_pelajaran) tahunAjaran = liveSchool.tahun_pelajaran;
+        if (liveSchool.semester) semester = liveSchool.semester;
+        if (liveSchool.logo_url) logoUrl = liveSchool.logo_url;
+      } else if (typeof window.SicakapDB !== 'undefined') {
         const profil = window.SicakapDB.getProfilSekolah ? window.SicakapDB.getProfilSekolah() : null;
-        if (profil && profil.namaSekolah) {
+        if (profil && profil.namaSekolah && profil.namaSekolah !== 'SDN 1 Nusantara') {
           sekolahNama = profil.namaSekolah.toUpperCase();
           if (profil.npsn) npsn = profil.npsn;
           if (profil.nss) nss = profil.nss;
           if (profil.alamat) alamat = profil.alamat;
-          if (profil.kepsekNama) kepsekNama = profil.kepsekNama;
-          if (profil.kepsekNip) kepsekNip = profil.kepsekNip;
+          if (profil.kepsekNama || profil.kepsek) kepsekNama = profil.kepsekNama || profil.kepsek;
+          if (profil.kepsekNip || profil.nipKepsek) kepsekNip = profil.kepsekNip || profil.nipKepsek;
           if (profil.tahunPelajaran) tahunAjaran = profil.tahunPelajaran;
           if (profil.semester) semester = profil.semester;
-          if (profil.logoUrl) logoUrl = profil.logoUrl;
-        } else {
-          const listSekolah = window.SicakapDB.getSekolah();
-          if (listSekolah && listSekolah.length > 0) {
-            const s = listSekolah[0];
-            if (s.nama) sekolahNama = s.nama.toUpperCase();
-            if (s.npsn) npsn = s.npsn;
-          }
+          if (profil.logoUrl || profil.logo) logoUrl = profil.logoUrl || profil.logo;
         }
       }
 

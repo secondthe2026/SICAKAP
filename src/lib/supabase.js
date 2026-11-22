@@ -120,7 +120,7 @@ export async function getCurrentUserProfile() {
       try {
         const { data: school, error: schoolErr } = await supabase
           .from('schools')
-          .select('id, npsn, name, is_active')
+          .select('*')
           .eq('id', profile.school_id)
           .maybeSingle();
 

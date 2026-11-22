@@ -161,19 +161,19 @@
       { id: 'MP-09', nama: 'Numerasi ANBK', icon: '📊', deskripsi: 'Asesmen Nasional Numerasi SD' }
     ],
     profilSekolah: {
-      namaSekolah: 'SDN 1 Nusantara',
-      npsn: '20104567',
-      nss: '101056001001',
-      alamat: 'Jl. Merdeka Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan',
-      kepsekNama: 'Drs. H. Mulyadi, M.Pd.',
-      kepsekNip: '196803121992031004',
-      tahunPelajaran: '2026/2027 SD',
-      semester: 'Ganjil',
+      namaSekolah: '',
+      npsn: '',
+      nss: '',
+      alamat: '',
+      kepsekNama: '',
+      kepsekNip: '',
+      tahunPelajaran: '2026/2027',
+      semester: 'Semester Ganjil',
       logoUrl: ''
     },
     akunAdmin: {
-      nama: 'Admin SDN 1 Nusantara',
-      email: 'admin@sdn1nusantara.sch.id',
+      nama: 'Administrator Sekolah',
+      email: '',
       username: 'admin',
       password: ''
     }
@@ -335,6 +335,14 @@
       }
 
       // Pastikan Mapel SD selalu terinisialisasi
+      // Bersihkan data profil demo lama jika tersimpan di cache browser
+      try {
+        const storedProfil = localStorage.getItem(KEYS.PROFIL_SEKOLAH);
+        if (storedProfil && storedProfil.includes('SDN 1 Nusantara')) {
+          localStorage.removeItem(KEYS.PROFIL_SEKOLAH);
+        }
+      } catch (e) {}
+
       if (!localStorage.getItem(KEYS.MAPEL)) {
         localStorage.setItem(KEYS.MAPEL, JSON.stringify(SEED_DATA.mapel));
       }
@@ -395,7 +403,11 @@
     // ==========================================
     getProfilSekolah: function () {
       this.init();
-      return this.read(KEYS.PROFIL_SEKOLAH, SEED_DATA.profilSekolah);
+      const p = this.read(KEYS.PROFIL_SEKOLAH, null);
+      if (p && p.namaSekolah && p.namaSekolah !== 'SDN 1 Nusantara') {
+        return p;
+      }
+      return (p && p.namaSekolah !== 'SDN 1 Nusantara') ? p : SEED_DATA.profilSekolah;
     },
     saveProfilSekolah: function (data) {
       this.write(KEYS.PROFIL_SEKOLAH, data);
