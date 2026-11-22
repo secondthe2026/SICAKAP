@@ -2182,7 +2182,6 @@
         return binaanRombels.some(r => (r.namaRombel || '').toLowerCase() === jk || r.id === j.rombelId);
       }) : [];
 
-      const activeCount = siswas.filter(s => s.statusUjian === 'Sedang Mengerjakan').length;
       // KUNCI: Badge Rombel Saya HANYA menghitung rombel binaannya (1 jika sudah ditugaskan, 0 jika belum)
       const rombelCount = binaanRombels.length;
 
@@ -2194,7 +2193,12 @@
       if (elSiswa) elSiswa.textContent = siswas.length;
       if (elRombel) elRombel.textContent = rombelCount;
       if (elJadwal) elJadwal.textContent = jadwals.length;
-      if (elActive) elActive.textContent = activeCount;
+
+      // SINGLE SOURCE OF TRUTH: Jangan pernah timpa nilai counter dengan 0 lokal!
+      // Pertahankan nilai cache memori terakhir agar tidak berkedip (1 -> 0 -> 1)
+      if (elActive && typeof window.__LATEST_ACTIVE_COUNT__ === 'number') {
+        elActive.textContent = window.__LATEST_ACTIVE_COUNT__;
+      }
 
       const badgeRombel = document.getElementById('badge-guru-rombel');
       const badgeSiswa = document.getElementById('badge-guru-siswa');
@@ -2212,24 +2216,70 @@
       }
     }
 
-    async function updateLiveActiveExamCount() {
-      const elActive = document.getElementById('stat-guru-active');
-      if (!elActive) return;
+    // ==============================================================
+    // SINGLE SOURCE OF TRUTH: HITUNG JUMLAH MURID SEDANG UJIAN
+    // ==============================================================
+    const ACTIVE_EXAM_STATUSES = ['in_progress', 'ongoing', 'active', 'mengerjakan', 'sedang_ujian', 'sedang mengerjakan'];
+    window.__LATEST_LIVE_SESSIONS__ = window.__LATEST_LIVE_SESSIONS__ || null;
+    window.__LATEST_ACTIVE_COUNT__ = (typeof window.__LATEST_ACTIVE_COUNT__ === 'number') ? window.__LATEST_ACTIVE_COUNT__ : null;
+
+    function computeActiveExamStudentsCount(sessions, studentList) {
+      if (!Array.isArray(sessions) || sessions.length === 0) return 0;
 
       resolveGuruAssignedClass();
       const activeKelas = window.__ACTIVE_GURU_KELAS__;
-      const schoolId = window.SicakapDB?.getActiveSchoolId();
       const cleanKelas = activeKelas ? activeKelas.toLowerCase().replace(/^kelas\s*/i, '').trim() : '';
       const numGuru = cleanKelas.replace(/[^0-9]/g, '');
 
-      // Status aktif yang dinormalisasi: ['in_progress', 'ongoing', 'active', 'mengerjakan', 'sedang_ujian', 'sedang mengerjakan']
-      const activeStatuses = ['in_progress', 'ongoing', 'active', 'mengerjakan', 'sedang_ujian', 'sedang mengerjakan'];
+      const students = Array.isArray(studentList) && studentList.length > 0 
+        ? studentList 
+        : (SicakapDB.getSiswa() || []);
+
+      const countedStudents = new Set();
+
+      sessions.forEach(sess => {
+        const st = String(sess.status || '').toLowerCase().trim();
+        if (!ACTIVE_EXAM_STATUSES.includes(st)) return;
+
+        const sId = String(sess.student_id || '');
+        const matched = students.find(s => String(s.id) === sId || String(s.nisn) === sId || String(s.identifier) === sId);
+
+        if (activeKelas) {
+          const sKelas = String(sess.kelas || matched?.kelas || matched?.class_name || '').toLowerCase().trim();
+          const numSess = sKelas.replace(/[^0-9]/g, '');
+
+          const matches = (
+            sKelas === activeKelas.toLowerCase() ||
+            (numSess && numGuru && numSess === numGuru) ||
+            (cleanKelas && (sKelas.includes(cleanKelas) || cleanKelas.includes(sKelas)))
+          );
+          if (!matches) return;
+        }
+
+        const uniqueKey = sId || sess.id;
+        countedStudents.add(uniqueKey);
+      });
+
+      return countedStudents.size;
+    }
+    window.computeActiveExamStudentsCount = computeActiveExamStudentsCount;
+
+    async function updateLiveActiveExamCount() {
+      const elActive = document.getElementById('stat-guru-active');
+
+      // Tampilkan cache memori terakhir seketika tanpa nunggu network (cegah kedip 0)
+      if (elActive && typeof window.__LATEST_ACTIVE_COUNT__ === 'number') {
+        elActive.textContent = window.__LATEST_ACTIVE_COUNT__;
+      }
+
+      const schoolId = window.SicakapDB?.getActiveSchoolId();
 
       if (window.supabase) {
         try {
           let query = window.supabase
             .from('exam_sessions')
-            .select('id, student_id, kelas, status, school_id');
+            .select('id, exam_id, school_id, student_id, kelas, status, device_token, violation_count, server_started_at, submitted_at')
+            .order('server_started_at', { ascending: false });
 
           if (schoolId) {
             query = query.eq('school_id', schoolId);
@@ -2237,42 +2287,24 @@
 
           const { data: sessions, error } = await query;
           if (!error && Array.isArray(sessions)) {
-            const allSiswas = SicakapDB.getSiswa() || [];
-            const activeSessions = sessions.filter(sess => {
-              const st = String(sess.status || '').toLowerCase().trim();
-              if (!activeStatuses.includes(st)) return false;
-
-              // Filter kelas rombel guru
-              if (activeKelas) {
-                const matchedStudent = allSiswas.find(s => s.id === sess.student_id);
-                const sKelas = String(sess.kelas || matchedStudent?.kelas || matchedStudent?.class_name || '').toLowerCase().trim();
-                const numSess = sKelas.replace(/[^0-9]/g, '');
-
-                if (sKelas === activeKelas.toLowerCase()) return true;
-                if (numSess && numGuru && numSess === numGuru) return true;
-                if (cleanKelas && (sKelas.includes(cleanKelas) || cleanKelas.includes(sKelas))) return true;
-                return false;
-              }
-              return true;
-            });
-
-            elActive.textContent = activeSessions.length;
-            return activeSessions.length;
+            window.__LATEST_LIVE_SESSIONS__ = sessions;
+            const count = computeActiveExamStudentsCount(sessions);
+            window.__LATEST_ACTIVE_COUNT__ = count;
+            if (elActive) elActive.textContent = count;
+            return count;
           }
         } catch (err) {
           console.warn('[LiveExamStats] Supabase query notice:', err);
         }
       }
 
-      // Fallback lokal jika offline
-      const allSiswas = SicakapDB.getSiswa() || [];
-      const localActive = allSiswas.filter(s => {
-        const sk = String(s.kelas || s.class_name || s.rombelId || '').toLowerCase();
-        const matchesClass = !activeKelas || sk === activeKelas.toLowerCase() || (cleanKelas && (sk.includes(cleanKelas) || cleanKelas.includes(sk)));
-        return matchesClass && (s.statusUjian === 'Sedang Mengerjakan' || s.statusUjian === 'Sedang Ujian');
-      }).length;
-      elActive.textContent = localActive;
-      return localActive;
+      // Jangan timpa angka memori terakhir dengan 0 jika fetch Supabase gagal
+      if (typeof window.__LATEST_ACTIVE_COUNT__ === 'number') {
+        if (elActive) elActive.textContent = window.__LATEST_ACTIVE_COUNT__;
+        return window.__LATEST_ACTIVE_COUNT__;
+      }
+
+      return 0;
     }
 
     // ==============================================================
@@ -3927,6 +3959,24 @@
       });
 
       const studentList = Array.from(studentMap.values());
+
+      // SINKRONISASI 100% PERSIS DENGAN KARTU BERANDA:
+      let activeExamCountInTable = 0;
+      studentList.forEach(s => {
+        const session = cloudSessions.find(sess => sess.student_id === s.id || sess.profiles?.identifier === s.nisn);
+        const normSt = String(session?.status || '').toLowerCase().trim();
+        if (ACTIVE_EXAM_STATUSES.includes(normSt)) {
+          activeExamCountInTable++;
+        }
+      });
+
+      // Update state global & DOM counter di kartu Beranda secara konsisten
+      window.__LATEST_ACTIVE_COUNT__ = activeExamCountInTable;
+      window.__LATEST_LIVE_SESSIONS__ = cloudSessions;
+      const elActiveHeader = document.getElementById('stat-guru-active');
+      if (elActiveHeader) {
+        elActiveHeader.textContent = activeExamCountInTable;
+      }
 
       if (studentList.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-400 font-bold">Belum ada murid atau sesi ujian di ${activeKelas || 'kelas ini'}.</td></tr>`;
@@ -5688,19 +5738,33 @@
 
     // Setup Realtime Subscription and Polling
     function setupGuruRealtimeAndPolling() {
-      // 1. Polling interval tiap 10 detik
-      if (window._guruPollInterval) clearInterval(window._guruPollInterval);
+      // 1. Polling interval tiap 10 detik (bersihkan interval lama agar tidak tabrakan timer ganda)
+      if (window._guruPollInterval) {
+        clearInterval(window._guruPollInterval);
+        window._guruPollInterval = null;
+      }
       window._guruPollInterval = setInterval(async () => {
-        await updateLiveActiveExamCount();
-        const monitoringView = document.getElementById('view-guru-monitoring');
-        if (monitoringView && !monitoringView.classList.contains('hidden')) {
-          await renderGuruMonitoring();
+        try {
+          await updateLiveActiveExamCount();
+          const monitoringView = document.getElementById('view-guru-monitoring');
+          if (monitoringView && !monitoringView.classList.contains('hidden')) {
+            await renderGuruMonitoring();
+          }
+        } catch (pollErr) {
+          console.warn('[Polling] Interval notice:', pollErr);
         }
       }, 10000);
 
-      // 2. Supabase Realtime Channel
+      // 2. Supabase Realtime Channel (bersihkan channel lama jika ada)
       if (window.supabase && typeof window.supabase.channel === 'function') {
         try {
+          if (window._guruRealtimeChannel) {
+            try {
+              window.supabase.removeChannel(window._guruRealtimeChannel);
+            } catch (eCh) {}
+            window._guruRealtimeChannel = null;
+          }
+
           const schoolId = window.SicakapDB?.getActiveSchoolId();
           const channelName = 'guru-live-monitor-' + (schoolId || 'global') + '-' + Date.now();
           const channel = window.supabase.channel(channelName);
@@ -5709,12 +5773,18 @@
             .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_sessions' }, async (payload) => {
               console.log('[Realtime] exam_sessions change:', payload);
               await updateLiveActiveExamCount();
-              renderGuruMonitoring();
+              const monitoringView = document.getElementById('view-guru-monitoring');
+              if (monitoringView && !monitoringView.classList.contains('hidden')) {
+                renderGuruMonitoring();
+              }
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_results' }, async (payload) => {
               console.log('[Realtime] exam_results change:', payload);
               await updateLiveActiveExamCount();
-              renderGuruMonitoring();
+              const monitoringView = document.getElementById('view-guru-monitoring');
+              if (monitoringView && !monitoringView.classList.contains('hidden')) {
+                renderGuruMonitoring();
+              }
             })
             .subscribe((status) => {
               console.log('[Realtime] Live Monitor subscription status:', status);
