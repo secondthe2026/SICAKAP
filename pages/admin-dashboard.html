@@ -745,6 +745,11 @@
               <i data-lucide="file-up" class="w-4 h-4"></i>
               <span>📥 Import Word / Google Form</span>
             </button>
+            <!-- Generator Soal AI -->
+            <button type="button" onclick="openModalAiGenerator()" class="min-h-[44px] px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-purple-600/25 transition active:scale-95 cursor-pointer" title="Generate Butir Soal Kurikulum Merdeka Otomatis via AI">
+              <i data-lucide="sparkles" class="w-4 h-4 text-amber-300"></i>
+              <span>Generator Soal AI</span>
+            </button>
             <button onclick="openModalTambahSoal()" class="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-indigo-600/20 transition active:scale-95 cursor-pointer">
               <i data-lucide="plus-circle" class="w-4 h-4"></i>
               <span>➕ Buat Soal SD Baru</span>
@@ -1473,6 +1478,182 @@
           <button type="submit" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-md cursor-pointer">💾 Simpan Soal SD</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  
+  <!-- ================= MODAL: GENERATOR SOAL SD AI (KURIKULUM MERDEKA) ================= -->
+  <div id="modal-ai-generator-soal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 hidden">
+    <div class="bg-white rounded-3xl max-w-5xl w-full flex flex-col shadow-2xl border border-slate-200/80 max-h-[92vh] overflow-hidden">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-amber-300">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="font-black text-base sm:text-lg tracking-tight">Generator Soal SD (Kurikulum Merdeka)</h3>
+              <span class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] tracking-wider uppercase">AI Powered</span>
+            </div>
+            <p class="text-xs text-purple-200/90 mt-0.5">Rumuskan butir soal pilihan ganda A–D kontekstual, stimulus cerita, kunci, &amp; pembahasan otomatis.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeModal('modal-ai-generator-soal')" class="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-2xl hover:bg-white/10 text-white/80 hover:text-white transition cursor-pointer" title="Tutup Modal">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (2 Columns Desktop, Stack 1 Column Mobile) -->
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/60">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          
+          <!-- Column Left: Parameters (5 Cols) -->
+          <div class="lg:col-span-5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <span class="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="sliders" class="w-3.5 h-3.5 text-purple-600"></i>
+                <span>Parameter Soal</span>
+              </span>
+              <span class="text-[11px] font-bold text-slate-400">Pilihan Ganda A–D</span>
+            </div>
+
+            <!-- Mapel -->
+            <div>
+              <label class="block font-bold text-xs text-slate-700 mb-1">Mata Pelajaran:</label>
+              <select id="ai-gen-mapel" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <option value="Matematika SD">Matematika SD (Numerasi)</option>
+                <option value="Bahasa Indonesia SD">Bahasa Indonesia SD (Literasi)</option>
+                <option value="IPAS SD">IPAS SD (Ilmu Pengetahuan Alam &amp; Sosial)</option>
+                <option value="Pendidikan Pancasila">Pendidikan Pancasila (PPKn)</option>
+                <option value="Bahasa Inggris SD">Bahasa Inggris SD</option>
+                <option value="Pendidikan Agama &amp; Budi Pekerti">Pendidikan Agama &amp; Budi Pekerti</option>
+                <option value="Seni &amp; Prakarya">Seni &amp; Prakarya</option>
+              </select>
+            </div>
+
+            <!-- Kelas -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block font-bold text-xs text-slate-700">Tingkat Kelas SD:</label>
+                <span id="ai-gen-kelas-badge" class="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">Bebas Pilih</span>
+              </div>
+              <select id="ai-gen-kelas" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <option value="1">Kelas 1 SD (Fase A)</option>
+                <option value="2">Kelas 2 SD (Fase A)</option>
+                <option value="3">Kelas 3 SD (Fase B)</option>
+                <option value="4">Kelas 4 SD (Fase B)</option>
+                <option value="5" selected>Kelas 5 SD (Fase C)</option>
+                <option value="6">Kelas 6 SD (Fase C)</option>
+              </select>
+            </div>
+
+            <!-- Topik -->
+            <div>
+              <label class="block font-bold text-xs text-slate-700 mb-1">Topik / Materi Pokok: <span class="text-rose-500">*</span></label>
+              <input type="text" id="ai-gen-topik" placeholder="Contoh: Operasi Hitung Pecahan &amp; Desimal" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              
+              <!-- Quick Topic Chips -->
+              <div class="mt-2 flex flex-wrap gap-1">
+                <button type="button" onclick="setAiQuickTopic('Operasi Pecahan &amp; Desimal')" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-700 text-slate-600 transition cursor-pointer">Pecahan</button>
+                <button type="button" onclick="setAiQuickTopic('Siklus Air &amp; Rantai Makanan')" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-700 text-slate-600 transition cursor-pointer">Siklus Air</button>
+                <button type="button" onclick="setAiQuickTopic('Pancasila &amp; Norma Kehidupan')" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-700 text-slate-600 transition cursor-pointer">Pancasila</button>
+                <button type="button" onclick="setAiQuickTopic('Teks Cerita Narasi &amp; Tokoh')" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-700 text-slate-600 transition cursor-pointer">Teks Cerita</button>
+                <button type="button" onclick="setAiQuickTopic('Keliling &amp; Luas Bangun Datar')" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-700 text-slate-600 transition cursor-pointer">Bangun Datar</button>
+              </div>
+            </div>
+
+            <!-- Referensi Materi (Opsional) -->
+            <div>
+              <label class="block font-bold text-xs text-slate-700 mb-1">Teks / Cerita Referensi (Opsional):</label>
+              <textarea id="ai-gen-referensi" rows="2" placeholder="Tempel bacaan, ringkasan bab buku, atau narasi agar soal merujuk teks ini..." class="w-full px-3 py-2 rounded-xl border border-slate-200 font-medium text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+            </div>
+
+            <!-- Jumlah Butir Soal -->
+            <div>
+              <label class="block font-bold text-xs text-slate-700 mb-1.5">Jumlah Butir Soal:</label>
+              <input type="hidden" id="ai-gen-jumlah" value="5" />
+              <div class="grid grid-cols-4 gap-2">
+                <button type="button" id="btn-count-5" onclick="setAiQuestionCount(5)" class="min-h-[44px] py-2 rounded-xl border-2 border-purple-600 bg-purple-50 text-purple-900 font-black text-xs transition cursor-pointer">5 Soal</button>
+                <button type="button" id="btn-count-10" onclick="setAiQuestionCount(10)" class="min-h-[44px] py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-xs hover:bg-slate-100 transition cursor-pointer">10 Soal</button>
+                <button type="button" id="btn-count-15" onclick="setAiQuestionCount(15)" class="min-h-[44px] py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-xs hover:bg-slate-100 transition cursor-pointer">15 Soal</button>
+                <button type="button" id="btn-count-20" onclick="setAiQuestionCount(20)" class="min-h-[44px] py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-xs hover:bg-slate-100 transition cursor-pointer">20 Soal</button>
+              </div>
+            </div>
+
+            <!-- Level Kognitif -->
+            <div>
+              <label class="block font-bold text-xs text-slate-700 mb-1">Komposisi Level Kognitif:</label>
+              <select id="ai-gen-kesulitan" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <option value="Campuran Proporsional">Campuran Proporsional (LOTS, MOTS, HOTS)</option>
+                <option value="Dominan HOTS">Dominan HOTS (Penalaran &amp; Analisis Cerita)</option>
+                <option value="Dominan MOTS">Dominan MOTS (Aplikasi &amp; Pemecahan Masalah)</option>
+                <option value="Dominan LOTS">Dominan LOTS (Pemahaman Konsep Dasar)</option>
+              </select>
+            </div>
+
+            <!-- Run Button -->
+            <button type="button" id="btn-run-ai-generate" onclick="executeGenerateAiQuestions()" class="w-full min-h-[44px] px-4 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-purple-600/30 transition active:scale-95 cursor-pointer">
+              <i data-lucide="sparkles" class="w-4 h-4 text-amber-300"></i>
+              <span id="btn-text-ai-generate">Buat Soal Otomatis</span>
+            </button>
+          </div>
+
+          <!-- Column Right: Preview & Curation (7 Cols) -->
+          <div class="lg:col-span-7 flex flex-col space-y-3">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="font-black text-xs text-slate-800 uppercase tracking-wider">Hasil Kurasi Soal:</span>
+                <span id="ai-preview-count-badge" class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-xs font-black">0 Soal</span>
+              </div>
+              <div class="flex items-center gap-1.5 text-xs font-bold">
+                <button type="button" onclick="toggleAiSelectAll(true)" class="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer">Pilih Semua</button>
+                <button type="button" onclick="toggleAiSelectAll(false)" class="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer">Hapus Pilihan</button>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="ai-preview-empty-state" class="bg-white p-8 sm:p-12 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center space-y-3">
+              <div class="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <i data-lucide="sparkles" class="w-7 h-7"></i>
+              </div>
+              <div>
+                <h4 class="font-black text-sm text-slate-800">Belum Ada Soal Dibuat</h4>
+                <p class="text-xs text-slate-500 max-w-sm mt-1">Pilih mata pelajaran, topik materi, dan jumlah soal di sebelah kiri, lalu klik <span class="font-bold text-purple-700">Buat Soal Otomatis</span> untuk mulai merumuskan soal.</p>
+              </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="ai-preview-loading-state" class="hidden bg-white p-8 sm:p-12 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center space-y-3">
+              <div class="w-12 h-12 rounded-full border-4 border-purple-200 border-t-purple-600 animate-spin"></div>
+              <div>
+                <h4 class="font-black text-sm text-slate-800">Sedang Merumuskan Soal SD...</h4>
+                <p class="text-xs text-slate-500 max-w-sm mt-1">AI sedang menyusun stimulus kontekstual, opsi jawaban A–D, kunci, serta pembahasan ramah anak SD.</p>
+              </div>
+            </div>
+
+            <!-- Rendered Question Cards Container -->
+            <div id="ai-preview-rendered-cards" class="hidden space-y-3.5 max-h-[60vh] overflow-y-auto pr-1">
+              <!-- Rendered via renderAiPreviewCards() -->
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+        <span id="ai-selected-count-label" class="text-xs font-bold text-slate-500">0 dari 0 butir soal terpilih</span>
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button type="button" onclick="closeModal('modal-ai-generator-soal')" class="min-h-[44px] px-4 py-2 rounded-xl border border-slate-200 font-bold text-xs text-slate-600 hover:bg-slate-50 transition cursor-pointer">Batal</button>
+          <button type="button" id="btn-save-ai-to-bank" onclick="saveSelectedAiQuestionsToBank()" disabled class="min-h-[44px] px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-xs flex items-center gap-2 shadow-md shadow-purple-600/20 transition active:scale-95 cursor-pointer">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span id="btn-label-save-ai">Simpan Soal Terpilih ke Bank Soal</span>
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -4202,5 +4383,6 @@
       initAdminData();
     });
   </script>
+<script src="/assets/js/ai-soal-generator.js"></script>
 </body>
 </html>

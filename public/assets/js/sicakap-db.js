@@ -360,14 +360,19 @@
           const mappedSoal = questions.map(q => ({
             id: q.id,
             examId: q.exam_id,
-            mapel: q.competency || '',
-            tingkat: q.kelas || '',
+            mapel: q.competency || 'Matematika SD',
+            tingkat: (String(q.kelas || '5').replace(/[^0-9]/g, '') || '5'),
+            kelas: q.kelas || 'Kelas 5',
             tipe: q.type || 'single',
             stimulus: q.stimulus || '',
             wacana: q.stimulus || '',
             pertanyaan: q.prompt || '',
             opsi: q.options || [],
-            points: q.points || 1
+            kunci: q.answer_key || q.kunci || 'A',
+            pembahasan: q.rubric_note || '',
+            cpTp: q.topic || q.competency || '',
+            levelKognitif: q.cognitive_level || 'MOTS',
+            points: Number(q.points) || 1
           }));
           this.write(KEYS.SOAL, mappedSoal, true);
         }
@@ -1253,17 +1258,27 @@
         const schoolId = this.getActiveSchoolId();
         if (schoolId) {
           this.setCloudSyncStatus('saving');
-          window.supabase.from('questions').insert([{
+          const rawGrade = String(soal.tingkat || soal.kelas || '5').replace(/[^0-9]/g, '') || '5';
+          const payload = {
             school_id: schoolId,
             exam_id: soal.examId || null,
-            kelas: soal.tingkat || null,
+            kelas: `Kelas ${rawGrade}`,
             type: soal.tipe || 'single',
             competency: soal.mapel || null,
             stimulus: soal.stimulus || soal.wacana || null,
             prompt: soal.pertanyaan,
             options: soal.opsi || [],
-            points: soal.points || 1.00
-          }]).then(({ error }) => {
+            points: Number(soal.points) || 1.00,
+            answer_key: String(soal.kunci || 'A').toUpperCase(),
+            rubric_note: soal.pembahasan || null,
+            cognitive_level: soal.levelKognitif || 'MOTS',
+            topic: soal.cpTp || null
+          };
+          if (soal.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(soal.id)) {
+            payload.id = soal.id;
+          }
+
+          window.supabase.from('questions').insert([payload]).then(({ error }) => {
             if (error) console.warn('[SicakapDB] Supabase addSoal error:', error);
             this.setCloudSyncStatus('saved');
           });
@@ -1284,9 +1299,13 @@
           if (updatedFields.pertanyaan) patch.prompt = updatedFields.pertanyaan;
           if (updatedFields.opsi) patch.options = updatedFields.opsi;
           if (updatedFields.stimulus || updatedFields.wacana) patch.stimulus = updatedFields.stimulus || updatedFields.wacana;
-          if (updatedFields.tingkat) patch.kelas = updatedFields.tingkat;
+          if (updatedFields.tingkat) patch.kelas = `Kelas ${String(updatedFields.tingkat).replace(/[^0-9]/g, '')}`;
           if (updatedFields.mapel) patch.competency = updatedFields.mapel;
           if (updatedFields.tipe) patch.type = updatedFields.tipe;
+          if (updatedFields.kunci) patch.answer_key = String(updatedFields.kunci).toUpperCase();
+          if (updatedFields.pembahasan) patch.rubric_note = updatedFields.pembahasan;
+          if (updatedFields.levelKognitif) patch.cognitive_level = updatedFields.levelKognitif;
+          if (updatedFields.cpTp) patch.topic = updatedFields.cpTp;
 
           window.supabase.from('questions').update(patch).eq('id', id).then(() => {
             this.setCloudSyncStatus('saved');
@@ -1326,13 +1345,44 @@
     bulkAddSoal: function (soalList) {
       if (!Array.isArray(soalList) || soalList.length === 0) return 0;
       const list = this.getSoal();
-      let maxId = list.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0);
       soalList.forEach(s => {
-        maxId++;
-        if (!s.id) s.id = maxId;
+        if (!s.id) s.id = `SOAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         list.push(s);
       });
       this.saveSoal(list);
+
+      if (typeof window !== 'undefined' && window.supabase) {
+        const schoolId = this.getActiveSchoolId();
+        if (schoolId) {
+          this.setCloudSyncStatus('saving');
+          const rows = soalList.map(s => {
+            const rawGrade = String(s.tingkat || s.kelas || '5').replace(/[^0-9]/g, '') || '5';
+            const row = {
+              school_id: schoolId,
+              exam_id: s.examId || null,
+              kelas: `Kelas ${rawGrade}`,
+              type: s.tipe || 'single',
+              competency: s.mapel || null,
+              stimulus: s.stimulus || s.wacana || null,
+              prompt: s.pertanyaan,
+              options: s.opsi || [],
+              points: Number(s.points) || 1.00,
+              answer_key: String(s.kunci || 'A').toUpperCase(),
+              rubric_note: s.pembahasan || null,
+              cognitive_level: s.levelKognitif || 'MOTS',
+              topic: s.cpTp || null
+            };
+            if (s.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.id)) {
+              row.id = s.id;
+            }
+            return row;
+          });
+          window.supabase.from('questions').insert(rows).then(({ error }) => {
+            if (error) console.warn('[SicakapDB] Supabase bulkAddSoal error:', error);
+            this.setCloudSyncStatus('saved');
+          });
+        }
+      }
       return soalList.length;
     },
 

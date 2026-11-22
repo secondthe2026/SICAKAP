@@ -136,6 +136,11 @@ CREATE TABLE IF NOT EXISTS public.questions (
 
 ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
 ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS kelas TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS rubric_note TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS cognitive_level TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS topic TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS answer_key TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
 
 -- E. TABEL QUESTION_KEYS
 CREATE TABLE IF NOT EXISTS public.question_keys (
