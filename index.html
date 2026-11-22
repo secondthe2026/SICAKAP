@@ -939,15 +939,40 @@
           throw new Error('Koneksi database Supabase belum terinisialisasi.');
         }
 
-        // Email staf/admin/superadmin tanpa konversi ke domain siswa
-        const email = username.trim();
-        const { data, error } = await window.supabase.auth.signInWithPassword({
+        // Normalisasi email / NIP guru
+        let email = username.trim().toLowerCase();
+        if (!email.includes('@')) {
+          if (window.teacherToAuthEmail) {
+            email = window.teacherToAuthEmail(email);
+          } else {
+            email = `${email.replace(/[^a-z0-9._-]/g, '')}@guru.sicakap.local`;
+          }
+        }
+
+        let { data, error } = await window.supabase.auth.signInWithPassword({
           email: email,
           password: password,
         });
 
+        // Fallback retry jika input awal tanpa '@'
+        if ((error || !data?.user) && !username.includes('@') && !email.endsWith('@guru.sicakap.local')) {
+          const fallbackEmail = `${username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')}@guru.sicakap.local`;
+          const retry = await window.supabase.auth.signInWithPassword({
+            email: fallbackEmail,
+            password: password,
+          });
+          if (retry.data?.user) {
+            data = retry.data;
+            error = null;
+          }
+        }
+
         if (error || !data?.user) {
-          throw new Error(error?.message || 'Email atau kata sandi salah.');
+          let errText = error?.message || 'Email, NIP, atau kata sandi salah.';
+          if (errText.toLowerCase().includes('invalid login credentials')) {
+            errText = 'Identitas login (Email/NIP) atau kata sandi tidak cocok. Pastikan akun sudah diaktifkan oleh Admin Sekolah.';
+          }
+          throw new Error(errText);
         }
 
         text.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><strong>Memuat profil &amp; hak akses...</strong>';

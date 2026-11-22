@@ -30,6 +30,20 @@ export function nisnToAuthEmail(nisn) {
 }
 
 /**
+ * Konversi NIP / Username Guru ke format email auth internal
+ * @param {string|number} identifier
+ * @returns {string} Contoh: "19850101...@guru.sicakap.local" atau email asli jika mengandung '@'
+ */
+export function teacherToAuthEmail(identifier) {
+  const clean = String(identifier || '').trim().toLowerCase();
+  if (clean.includes('@')) {
+    return clean;
+  }
+  const sanitized = clean.replace(/[^a-z0-9._-]/g, '');
+  return `${sanitized}@guru.sicakap.local`;
+}
+
+/**
  * Client Auth terpisah tanpa persistSession untuk membuat/mendaftarkan akun Siswa
  * Mencegah sesi login Guru tertimpa / auto-logout saat menambah siswa
  */
@@ -49,6 +63,7 @@ export function createUnpersistedAuthClient() {
 
 if (typeof window !== 'undefined') {
   window.nisnToAuthEmail = nisnToAuthEmail;
+  window.teacherToAuthEmail = teacherToAuthEmail;
   window.createUnpersistedAuthClient = createUnpersistedAuthClient;
 }
 

@@ -1225,11 +1225,14 @@
         <div>
           <label class="block font-bold text-slate-700 mb-1">Kata Sandi Awal</label>
           <input type="text" id="guru-password" value="cakap2026" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-teal-100" />
+          <p class="text-[11px] text-teal-800 bg-teal-50 border border-teal-200 p-2 rounded-xl mt-1.5">
+            💡 Akun login guru otomatis dibuatkan di Supabase Auth &amp; terisolasi aman per sekolah.
+          </p>
         </div>
 
         <div class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
           <button type="button" onclick="closeModal('modal-add-guru')" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Batal</button>
-          <button type="submit" class="px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black shadow-md shadow-teal-700/20 cursor-pointer">Simpan Guru Baru</button>
+          <button type="submit" id="btn-save-guru" class="px-5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black shadow-md shadow-teal-700/20 cursor-pointer">Simpan Guru Baru</button>
         </div>
       </form>
     </div>
@@ -2040,10 +2043,11 @@
               <span class="font-mono text-slate-500 font-bold">••••••••</span>
             </td>
             <td class="py-3.5 px-4 text-center space-x-1">
-              <button onclick="resetGuruPassword('${g.id}', '${g.nama}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold border border-amber-200 transition cursor-pointer" title="Reset Password ke cakap2026">
-                🔑 Reset
+              <button onclick="resetGuruPassword('${g.id}', '${(g.nama || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold border border-amber-200 transition cursor-pointer text-xs inline-flex items-center gap-1" title="Reset Password / Aktifkan Akun Supabase Auth">
+                <span>🔑</span>
+                <span class="hidden sm:inline">Reset / Aktifkan</span>
               </button>
-              <button onclick="deleteGuru('${g.id}', '${g.nama}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition cursor-pointer" title="Hapus Guru">
+              <button onclick="deleteGuru('${g.id}', '${(g.nama || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition cursor-pointer text-xs" title="Hapus Guru">
                 🗑️
               </button>
             </td>
@@ -2062,54 +2066,137 @@
       const mapel = document.getElementById('guru-mapel').value.trim();
       const rombelWali = document.getElementById('guru-rombelwali').value;
       const password = document.getElementById('guru-password').value.trim() || 'cakap2026';
+      const saveBtn = document.getElementById('btn-save-guru') || e.target.querySelector('button[type="submit"]');
 
       if (!rombelWali) {
         alert('Penugasan kelas (Kelas 1 - 6) wajib dipilih untuk akun Guru!');
         return;
       }
 
-      SicakapDB.addGuru({
-        nama,
-        nip,
-        email,
-        mapel,
-        rombelWali,
-        kelas: rombelWali,
-        class_name: rombelWali,
-        password
-      });
-
-      // Sinkronisasi ke Supabase Profiles jika DataStore aktif
-      try {
-        if (window.DataStore && typeof window.DataStore.createProfile === 'function') {
-          await window.DataStore.createProfile({
-            full_name: nama,
-            nip: nip,
-            email: email,
-            subject: mapel,
-            kelas: rombelWali,
-            class_name: rombelWali,
-            role: 'guru'
-          });
-        }
-      } catch (err) {
-        console.warn('[Admin] Sync Supabase profile guru:', err);
+      if (!nip && !email) {
+        alert('Mohon isi minimal salah satu antara NIP atau Email Guru sebagai identitas login!');
+        return;
       }
 
-      closeModal('modal-add-guru');
-      document.getElementById('guru-nama').value = '';
-      document.getElementById('guru-nip').value = '';
-      document.getElementById('guru-email').value = '';
-      document.getElementById('guru-mapel').value = '';
-      document.getElementById('guru-rombelwali').value = '';
-      
-      initAdminData();
-      showToast(`Guru "${nama}" (Penugasan: ${rombelWali}) berhasil disimpan!`);
+      const origBtnHtml = saveBtn ? saveBtn.innerHTML : '';
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> Mendaftarkan ke Supabase Auth...';
+      }
+
+      try {
+        const { data: sessionData } = await window.supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error('Sesi login admin tidak ditemukan. Silakan refresh halaman.');
+
+        const res = await fetch('/api/teachers/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            nama,
+            nip,
+            email,
+            mapel,
+            rombelWali,
+            password
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || 'Gagal membuat akun guru di server.');
+        }
+
+        const createdTeacher = json.teacher || {};
+
+        SicakapDB.addGuru({
+          id: createdTeacher.id || ('G-' + Date.now()),
+          nama: createdTeacher.nama || nama,
+          nip: createdTeacher.nip || nip,
+          email: createdTeacher.email || email,
+          mapel: createdTeacher.mapel || mapel,
+          rombelWali: createdTeacher.rombelWali || rombelWali,
+          kelas: createdTeacher.rombelWali || rombelWali,
+          class_name: createdTeacher.rombelWali || rombelWali,
+          password: createdTeacher.initial_password || password
+        });
+
+        closeModal('modal-add-guru');
+        document.getElementById('guru-nama').value = '';
+        document.getElementById('guru-nip').value = '';
+        document.getElementById('guru-email').value = '';
+        document.getElementById('guru-mapel').value = '';
+        document.getElementById('guru-rombelwali').value = '';
+        
+        initAdminData();
+        showToast(`✅ ${json.message || `Guru "${nama}" berhasil didaftarkan!`}`);
+      } catch (err) {
+        console.error('[Admin] Gagal mendaftarkan guru:', err);
+        showToast(`❌ Gagal mendaftarkan guru: ${err.message}`);
+        alert(`Gagal mendaftarkan guru: ${err.message}`);
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = origBtnHtml;
+        }
+      }
     }
 
-    function resetGuruPassword(id, nama) {
-      SicakapDB.updateGuru(id, { password: 'cakap2026' });
-      showToast(`Password akun guru "${nama}" berhasil direset ke "cakap2026"!`);
+    async function resetGuruPassword(id, nama) {
+      const guru = (SicakapDB.getGuru() || []).find(g => String(g.id) === String(id)) || {};
+      const targetNama = nama || guru.nama || 'Guru SD';
+      const targetEmail = guru.email || '';
+      const targetNip = guru.nip || '';
+      const targetRombel = guru.rombelWali || guru.kelas || guru.class_name || '';
+      const targetMapel = guru.mapel || guru.subject || '';
+
+      const newPass = prompt(`Reset kata sandi & aktifkan akun login Supabase untuk "${targetNama}".\nMasukkan kata sandi baru (minimal 6 karakter):`, 'cakap2026');
+      if (!newPass) return;
+      if (newPass.trim().length < 6) {
+        showToast('❌ Kata sandi minimal 6 karakter.');
+        return;
+      }
+
+      showToast(`⏳ Memproses reset kata sandi & aktivasi Supabase Auth untuk ${targetNama}...`);
+
+      try {
+        const { data: sessionData } = await window.supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error('Sesi admin tidak ditemukan. Silakan refresh halaman.');
+
+        const res = await fetch('/api/teachers/reset-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            teacher_id: id,
+            new_password: newPass.trim(),
+            nama: targetNama,
+            email: targetEmail,
+            nip: targetNip,
+            rombelWali: targetRombel,
+            mapel: targetMapel
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || 'Gagal mereset kata sandi guru');
+        }
+
+        SicakapDB.updateGuru(id, { password: newPass.trim(), initial_password: newPass.trim() });
+        initAdminData();
+        showToast(`✅ ${json.message || `Password akun guru "${targetNama}" berhasil direset!`}`);
+      } catch (err) {
+        console.error('[Reset Guru Password] Error:', err);
+        showToast(`❌ Gagal reset kata sandi: ${err.message}`);
+        alert(`Gagal reset kata sandi: ${err.message}`);
+      }
     }
 
     function deleteGuru(id, nama) {

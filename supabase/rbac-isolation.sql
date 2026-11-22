@@ -1141,6 +1141,7 @@ ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT 'Semester Ganjil';
 -- PERSISTENSI DATA PRODUKSI (CLASSES / ROMBEL & PROFILES ENHANCEMENT)
 -- ============================================================================
 ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS nip TEXT,
 ADD COLUMN IF NOT EXISTS subject TEXT,
 ADD COLUMN IF NOT EXISTS phone TEXT,
 ADD COLUMN IF NOT EXISTS initial_password TEXT;

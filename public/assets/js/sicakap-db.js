@@ -694,7 +694,13 @@
       if (!guru.id) guru.id = 'GUR-' + String(list.length + 1).padStart(2, '0');
       if (!guru.password) guru.password = 'cakap2026';
       guru.updatedAt = new Date().toISOString().slice(0, 10);
-      list.push(guru);
+
+      const existingIdx = list.findIndex(g => String(g.id) === String(guru.id) || (guru.nip && g.nip === guru.nip));
+      if (existingIdx !== -1) {
+        list[existingIdx] = { ...list[existingIdx], ...guru };
+      } else {
+        list.push(guru);
+      }
       this.saveGuru(list);
 
       // Async write to Supabase
