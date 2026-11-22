@@ -27,14 +27,14 @@ BEGIN
     RAISE EXCEPTION 'Hanya akun siswa aktif yang dapat memulai ujian.';
   END IF;
 
-  -- Cari ujian yang aktif & cocok dengan ID atau Token
+  -- Cari ujian yang aktif & cocok dengan ID atau Token (KETAT: HANYA MILIK SEKOLAH SISWA SENDIRI)
   SELECT * INTO v_exam
   FROM public.exams
   WHERE (
     (p_exam_id IS NOT NULL AND id = p_exam_id)
     OR (v_clean_token <> '' AND UPPER(TRIM(COALESCE(token_code, ''))) = v_clean_token)
   )
-  AND (school_id = v_profile.school_id OR school_id IS NULL)
+  AND school_id = v_profile.school_id
   AND (
     status::text IN ('active', 'aktif', 'published')
     OR is_active = true

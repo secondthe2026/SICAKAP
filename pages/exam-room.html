@@ -991,13 +991,16 @@
           startBtn.innerHTML = '<span class="inline-block animate-spin mr-2">⏳</span> Memulai ruang ujian...';
 
           try {
-            // Cari data ujian dari cache lokal atau query langsung ke Supabase
+            // Cari data ujian dari cache lokal atau query langsung ke Supabase dengan filter ketat school_id
             let matchedExam = availableExams.find(e => String(e.token_code || e.token || '').trim().toUpperCase() === tokenVal);
             if (!matchedExam && supabase) {
-              const { data: qExams } = await supabase.from('exams')
+              let qEx = supabase.from('exams')
                 .select('*')
-                .ilike('token_code', tokenVal)
-                .limit(1);
+                .ilike('token_code', tokenVal);
+              if (studentSchoolId) {
+                qEx = qEx.eq('school_id', studentSchoolId);
+              }
+              const { data: qExams } = await qEx.limit(1);
               if (qExams && qExams.length > 0) {
                 matchedExam = qExams[0];
               }
@@ -1015,7 +1018,8 @@
             await engine.requestFullscreen();
             await engine.boot({
               examId: targetExamId,
-              tokenCode: tokenVal
+              tokenCode: tokenVal,
+              schoolId: studentSchoolId
             });
             document.getElementById('modal-token-entry')?.classList.add('hidden');
           } catch (err) {

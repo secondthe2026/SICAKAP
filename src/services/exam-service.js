@@ -142,58 +142,93 @@ export async function startOrResumeExam(examId, tokenCode = '') {
   };
 }
 
-export async function fetchExamQuestions(examId, sessionId, { shuffleQuestions, shuffleOptions }) {
-  // Tabel questions aman: kunci jawaban tidak bocor
+// Cache memori soal ujian: menjamin fetch soal hanya dilakukan 1x di awal sesi ujian per exam
+const EXAM_QUESTIONS_CACHE = new Map();
+
+export async function fetchExamQuestions(examId, sessionId, { shuffleQuestions, shuffleOptions, schoolId = null }) {
+  const cacheKey = `exam_questions_${examId || 'current'}`;
   let list = [];
-  try {
-    // 1. Coba ambil soal yang terikat ke exam_id
-    if (examId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) {
-      const { data, error } = await supabase
-        .from('questions')
-        .select('id, order_no, type, competency, stimulus, media_urls, prompt, options, points')
-        .eq('exam_id', examId)
-        .order('order_no', { ascending: true });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        list = data;
-      }
+  // 1. Cek memory cache / sessionStorage (Hanya fetch 1x di awal sesi ujian)
+  if (EXAM_QUESTIONS_CACHE.has(cacheKey)) {
+    list = JSON.parse(JSON.stringify(EXAM_QUESTIONS_CACHE.get(cacheKey)));
+  } else if (typeof sessionStorage !== 'undefined') {
+    const stored = sessionStorage.getItem(`sicakap_${cacheKey}`);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed;
+          EXAM_QUESTIONS_CACHE.set(cacheKey, parsed);
+        }
+      } catch (e) {}
     }
-
-    // 2. Jika belum ada soal spesifik exam_id, ambil dari bank soal sekolah
-    if (list.length === 0) {
-      const { data: qData, error: qErr } = await supabase
-        .from('questions')
-        .select('id, order_no, type, competency, stimulus, media_urls, prompt, options, points, kelas')
-        .order('order_no', { ascending: true })
-        .limit(50);
-
-      if (!qErr && Array.isArray(qData) && qData.length > 0) {
-        list = qData;
-      }
-    }
-  } catch (err) {
-    console.warn('[SICAKAP] Fetch questions from Supabase fallback:', err);
   }
 
-  // Fallback ke SicakapDB jika data soal di Supabase belum ada
-  if (list.length === 0 && typeof window !== 'undefined' && window.SicakapDB) {
-    const localSoals = window.SicakapDB.getSoal();
-    if (Array.isArray(localSoals) && localSoals.length > 0) {
-      // Hapus kunci jawaban agar tidak bocor ke sisi klien
-      list = localSoals.map((s, idx) => {
-        const { kunci, kunciJawaban, answer_key, ...safeSoal } = s;
-        return {
-          id: safeSoal.id || `Q-${idx + 1}`,
-          order_no: idx + 1,
-          type: safeSoal.type || 'single',
-          competency: safeSoal.competency || safeSoal.mapel || 'Kompetensi SD',
-          stimulus: safeSoal.stimulus || safeSoal.wacana || '',
-          media_urls: safeSoal.media_urls || [],
-          prompt: safeSoal.prompt || safeSoal.pertanyaan || '',
-          options: safeSoal.options || safeSoal.opsi || safeSoal.pilihan || [],
-          points: safeSoal.points || 1,
-        };
-      });
+  // 2. Jika belum ada di cache, baru query ke Supabase
+  if (list.length === 0) {
+    try {
+      // 2a. Coba ambil soal yang terikat ke exam_id
+      if (examId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) {
+        let q = supabase
+          .from('questions')
+          .select('id, order_no, type, competency, stimulus, media_urls, prompt, options, points, school_id')
+          .eq('exam_id', examId);
+        if (schoolId) q = q.eq('school_id', schoolId);
+        const { data, error } = await q.order('order_no', { ascending: true });
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          list = data;
+        }
+      }
+
+      // 2b. Jika belum ada soal spesifik exam_id, ambil dari bank soal sekolah
+      if (list.length === 0) {
+        let q2 = supabase
+          .from('questions')
+          .select('id, order_no, type, competency, stimulus, media_urls, prompt, options, points, kelas, school_id');
+        if (schoolId) q2 = q2.eq('school_id', schoolId);
+        const { data: qData, error: qErr } = await q2.order('order_no', { ascending: true }).limit(50);
+
+        if (!qErr && Array.isArray(qData) && qData.length > 0) {
+          list = qData;
+        }
+      }
+    } catch (err) {
+      console.warn('[SICAKAP] Fetch questions from Supabase fallback:', err);
+    }
+
+    // Fallback ke SicakapDB jika data soal di Supabase belum ada
+    if (list.length === 0 && typeof window !== 'undefined' && window.SicakapDB) {
+      const localSoals = window.SicakapDB.getSoal();
+      if (Array.isArray(localSoals) && localSoals.length > 0) {
+        // Hapus kunci jawaban agar tidak bocor ke sisi klien
+        list = localSoals.map((s, idx) => {
+          const { kunci, kunciJawaban, answer_key, ...safeSoal } = s;
+          return {
+            id: safeSoal.id || `Q-${idx + 1}`,
+            order_no: idx + 1,
+            type: safeSoal.type || 'single',
+            competency: safeSoal.competency || safeSoal.mapel || 'Kompetensi SD',
+            stimulus: safeSoal.stimulus || safeSoal.wacana || '',
+            media_urls: safeSoal.media_urls || [],
+            prompt: safeSoal.prompt || safeSoal.pertanyaan || '',
+            options: safeSoal.options || safeSoal.opsi || safeSoal.pilihan || [],
+            points: safeSoal.points || 1,
+            school_id: safeSoal.school_id || schoolId,
+          };
+        });
+      }
+    }
+
+    // Simpan ke cache agar tidak di-fetch berulang kali
+    if (list.length > 0) {
+      EXAM_QUESTIONS_CACHE.set(cacheKey, list);
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.setItem(`sicakap_${cacheKey}`, JSON.stringify(list));
+        } catch (e) {}
+      }
     }
   }
 

@@ -37,6 +37,7 @@ export class CBTEngine {
     this.questions = await fetchExamQuestions(exam.id, session.id, {
       shuffleQuestions: exam.shuffle_questions,
       shuffleOptions: exam.shuffle_options,
+      schoolId: session.school_id,
     });
 
     this.sync = new OfflineAnswerSync({

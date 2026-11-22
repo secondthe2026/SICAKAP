@@ -75,7 +75,18 @@ export class OfflineAnswerSync {
       dirty: true,
       updatedAt: Date.now(),
     };
+    // 1. Instan simpan ke localStorage agar tidak ada progres yang hilang jika browser ditutup/crash
     this._persistLocal();
+
+    // 2. Debounce auto-save 3 detik agar tidak membebani Supabase saat siswa klik cepat antar opsi/soal
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    this._debounceTimer = setTimeout(() => {
+      if (navigator.onLine) {
+        this.syncDirty();
+      }
+    }, 3000);
   }
 
   getAnswer(questionId) {
@@ -107,6 +118,7 @@ export class OfflineAnswerSync {
   stopAutoSync() {
     window.removeEventListener('online', this._handleOnline);
     window.removeEventListener('offline', this._handleOffline);
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
     if (this.intervalId) clearInterval(this.intervalId);
   }
 
@@ -135,33 +147,49 @@ export class OfflineAnswerSync {
       is_flagged: v.is_flagged,
     }));
 
-    try {
-      const { error } = await supabase
-        .from('student_answers')
-        .upsert(rows, { onConflict: 'session_id,question_id' });
+    let syncSuccess = false;
 
-      this.isSyncing = false;
+    // Retry otomatis hingga 3x jika sinyal sekolah naik-turun
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const { error } = await supabase
+          .from('student_answers')
+          .upsert(rows, { onConflict: 'session_id,question_id' });
 
-      if (error) {
-        console.warn('[SICAKAP] Sync tertunda:', error.message);
-        this.onStatusChange('error');
-        return false;
-      }
-
-      // Tandai bersih hanya jika siswa belum mengubah jawaban lagi saat sync berlangsung
-      for (const [qid, syncedAt] of snapshotTimes.entries()) {
-        if (this.cache[qid] && this.cache[qid].updatedAt === syncedAt) {
-          this.cache[qid].dirty = false;
+        if (!error) {
+          syncSuccess = true;
+          break;
+        } else {
+          console.warn(`[SICAKAP] Auto-sync percobaan ${attempt}/3 catatan:`, error.message);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, attempt * 1000));
+          }
+        }
+      } catch (err) {
+        console.warn(`[SICAKAP] Auto-sync percobaan ${attempt}/3 error:`, err);
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, attempt * 1000));
         }
       }
-      this._persistLocal();
-      this.onStatusChange('online');
-      return true;
-    } catch (err) {
-      this.isSyncing = false;
+    }
+
+    this.isSyncing = false;
+
+    if (!syncSuccess) {
+      console.warn('[SICAKAP] Auto-sync gagal setelah 3x percobaan, data tetap aman di cache lokal.');
       this.onStatusChange('error');
       return false;
     }
+
+    // Tandai bersih hanya jika siswa belum mengubah jawaban lagi saat sync berlangsung
+    for (const [qid, syncedAt] of snapshotTimes.entries()) {
+      if (this.cache[qid] && this.cache[qid].updatedAt === syncedAt) {
+        this.cache[qid].dirty = false;
+      }
+    }
+    this._persistLocal();
+    this.onStatusChange('online');
+    return true;
   }
 
   clearLocalCache() {

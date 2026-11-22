@@ -2471,7 +2471,8 @@
             ]);
           }
         }
-        await renderGuruMonitoring();
+        // Force refresh cache memori questions & profiles saat tombol refresh manual diklik
+        await renderGuruMonitoring(true);
         if (typeof window.updateLiveActiveExamCount === 'function') {
           await window.updateLiveActiveExamCount();
         }
@@ -3987,8 +3988,13 @@
       }
     }
 
+    // In-memory cache untuk questions, keys, dan profiles murid rombel (fetch 1x saja)
+    window._GURU_CACHED_QUESTIONS_ = null;
+    window._GURU_CACHED_KEYS_ = null;
+    window._GURU_CACHED_PROFILES_ = null;
+
     // 4. LIVE SCORE GURU (100% SUPABASE EXAM_SESSIONS + EXAM_RESULTS)
-    async function renderGuruMonitoring() {
+    async function renderGuruMonitoring(forceRefresh = false) {
       resolveGuruAssignedClass();
       const activeKelas = window.__ACTIVE_GURU_KELAS__;
       const schoolId = window.SicakapDB?.getActiveSchoolId();
@@ -4000,17 +4006,17 @@
       const cleanKelas = activeKelas ? activeKelas.toLowerCase().replace(/^kelas\s*/i, '').trim() : '';
       const numGuru = cleanKelas.replace(/[^0-9]/g, '');
 
-      // 1. Inisialisasi variabel penampung data Supabase di level fungsi
+      // 1. Inisialisasi variabel penampung data Supabase di level fungsi (gunakan cache memori untuk data statis)
       let cloudSessions = [];
       let cloudResults = [];
       let cloudAnswersCount = {};
       let cloudAnswersList = [];
-      let cloudQuestions = [];
-      let cloudKeys = [];
-      let cloudProfiles = [];
+      let cloudQuestions = window._GURU_CACHED_QUESTIONS_ || [];
+      let cloudKeys = window._GURU_CACHED_KEYS_ || [];
+      let cloudProfiles = window._GURU_CACHED_PROFILES_ || [];
 
       if (window.supabase) {
-        // Query 1: exam_sessions
+        // Query 1: exam_sessions (SELALU di-fetch tiap poll, terfilter school_id)
         try {
           let sQuery = window.supabase
             .from('exam_sessions')
@@ -4053,7 +4059,7 @@
           console.warn('[renderGuruMonitoring] Sessions query notice:', sErr);
         }
 
-        // Query 2: exam_results
+        // Query 2: exam_results (SELALU di-fetch tiap poll, terfilter school_id)
         try {
           let rQuery = window.supabase
             .from('exam_results')
@@ -4065,7 +4071,7 @@
           console.warn('[renderGuruMonitoring] Results query notice:', rErr);
         }
 
-        // Query 3: student_answers
+        // Query 3: student_answers (hanya fetch jika ada sesi aktif murid)
         try {
           if (cloudSessions.length > 0) {
             const sIds = cloudSessions.map(s => s.id).filter(Boolean);
@@ -4086,39 +4092,53 @@
           console.warn('[renderGuruMonitoring] Answers query notice:', aErr);
         }
 
-        // Query 4: questions
-        try {
-          let qQuery = window.supabase
-            .from('questions')
-            .select('*');
-          if (schoolId) qQuery = qQuery.eq('school_id', schoolId);
-          const { data: qData } = await qQuery;
-          if (Array.isArray(qData)) cloudQuestions = qData;
-        } catch (qErr) {
-          console.warn('[renderGuruMonitoring] Questions query notice:', qErr);
-        }
+        // Query 4, 5, 6: questions, question_keys, profiles
+        // HEMAT RESOURCE: Hanya query jika forceRefresh = true ATAU cache memori masih kosong
+        const needsStaticData = forceRefresh || !window._GURU_CACHED_QUESTIONS_ || !window._GURU_CACHED_PROFILES_;
+        if (needsStaticData) {
+          // Query 4: questions
+          try {
+            let qQuery = window.supabase
+              .from('questions')
+              .select('*');
+            if (schoolId) qQuery = qQuery.eq('school_id', schoolId);
+            const { data: qData } = await qQuery;
+            if (Array.isArray(qData)) {
+              cloudQuestions = qData;
+              window._GURU_CACHED_QUESTIONS_ = qData;
+            }
+          } catch (qErr) {
+            console.warn('[renderGuruMonitoring] Questions query notice:', qErr);
+          }
 
-        // Query 5: question_keys
-        try {
-          const { data: kData } = await window.supabase
-            .from('question_keys')
-            .select('*');
-          if (Array.isArray(kData)) cloudKeys = kData;
-        } catch (kErr) {
-          console.warn('[renderGuruMonitoring] Keys query notice:', kErr);
-        }
+          // Query 5: question_keys
+          try {
+            const { data: kData } = await window.supabase
+              .from('question_keys')
+              .select('*');
+            if (Array.isArray(kData)) {
+              cloudKeys = kData;
+              window._GURU_CACHED_KEYS_ = kData;
+            }
+          } catch (kErr) {
+            console.warn('[renderGuruMonitoring] Keys query notice:', kErr);
+          }
 
-        // Query 6: profiles
-        try {
-          let pQuery = window.supabase
-            .from('profiles')
-            .select('*')
-            .eq('role', 'siswa');
-          if (schoolId) pQuery = pQuery.eq('school_id', schoolId);
-          const { data: pData } = await pQuery;
-          if (Array.isArray(pData)) cloudProfiles = pData;
-        } catch (pErr) {
-          console.warn('[renderGuruMonitoring] Profiles query notice:', pErr);
+          // Query 6: profiles
+          try {
+            let pQuery = window.supabase
+              .from('profiles')
+              .select('*')
+              .eq('role', 'siswa');
+            if (schoolId) pQuery = pQuery.eq('school_id', schoolId);
+            const { data: pData } = await pQuery;
+            if (Array.isArray(pData)) {
+              cloudProfiles = pData;
+              window._GURU_CACHED_PROFILES_ = pData;
+            }
+          } catch (pErr) {
+            console.warn('[renderGuruMonitoring] Profiles query notice:', pErr);
+          }
         }
       }
 
@@ -4473,7 +4493,8 @@
           if (error) throw error;
         }
         showToast(`✅ Login perangkat untuk ${studentName} berhasil di-reset! Siswa dapat login kembali di HP lain.`, 'success');
-        await renderGuruMonitoring();
+        // Force refresh cache memori questions & profiles saat tombol refresh manual diklik
+        await renderGuruMonitoring(true);
       } catch (err) {
         console.error('[Reset Device] Error:', err);
         showToast(`❌ Gagal reset login: ${err.message}`, 'error');
@@ -4497,7 +4518,8 @@
           if (error) throw error;
         }
         showToast(`🔓 Sesi ujian "${studentName}" berhasil dibuka kembali!`, 'success');
-        await renderGuruMonitoring();
+        // Force refresh cache memori questions & profiles saat tombol refresh manual diklik
+        await renderGuruMonitoring(true);
         updateLiveActiveExamCount();
       } catch (err) {
         console.error('[Unlock Session] Error:', err);
@@ -4528,7 +4550,8 @@
         }
 
         showToast(`✅ Sesi pengerjaan siswa "${studentName}" berhasil direset!`, 'success');
-        await renderGuruMonitoring();
+        // Force refresh cache memori questions & profiles saat tombol refresh manual diklik
+        await renderGuruMonitoring(true);
         await updateLiveActiveExamCount();
         renderGuruStats();
       } catch (err) {
@@ -6138,58 +6161,95 @@
     window.resetSiswaSesi = resetSiswaSesi;
     window.updateLiveActiveExamCount = updateLiveActiveExamCount;
 
+    function cleanupGuruRealtime() {
+      if (window._guruRealtimeChannel && window.supabase) {
+        try {
+          window.supabase.removeChannel(window._guruRealtimeChannel);
+        } catch (eCh) {}
+        window._guruRealtimeChannel = null;
+      }
+    }
+    window.cleanupGuruRealtime = cleanupGuruRealtime;
+
+    // Bersihkan channel Realtime jika guru menutup halaman atau meninggalkan tab
+    window.addEventListener('beforeunload', cleanupGuruRealtime);
+    window.addEventListener('pagehide', cleanupGuruRealtime);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        cleanupGuruRealtime();
+      } else {
+        const monitoringView = document.getElementById('view-guru-monitoring');
+        if (monitoringView && !monitoringView.classList.contains('hidden')) {
+          setupGuruRealtimeAndPolling();
+          renderGuruMonitoring(false);
+        }
+      }
+    });
+
     // Setup Realtime Subscription and Polling
     function setupGuruRealtimeAndPolling() {
-      // 1. Polling interval tiap 10 detik (bersihkan interval lama agar tidak tabrakan timer ganda)
+      // 1. Polling interval tiap 15 detik (hemat resource Supabase Free)
       if (window._guruPollInterval) {
         clearInterval(window._guruPollInterval);
         window._guruPollInterval = null;
       }
       window._guruPollInterval = setInterval(async () => {
         try {
+          // Lewati polling jika tab di background untuk menghemat bandwidth
+          if (document.hidden) return;
           await updateLiveActiveExamCount();
           const monitoringView = document.getElementById('view-guru-monitoring');
           if (monitoringView && !monitoringView.classList.contains('hidden')) {
-            await renderGuruMonitoring();
+            // Auto-polling menggunakan memory cache untuk questions & profiles
+            await renderGuruMonitoring(false);
           }
         } catch (pollErr) {
           console.warn('[Polling] Interval notice:', pollErr);
         }
-      }, 10000);
+      }, 15000);
 
-      // 2. Supabase Realtime Channel (bersihkan channel lama jika ada)
+      // 2. Supabase Realtime Channel: hanya sambungkan saat tab aktif & memiliki schoolId valid
+      if (document.hidden) return;
+
       if (window.supabase && typeof window.supabase.channel === 'function') {
         try {
-          if (window._guruRealtimeChannel) {
-            try {
-              window.supabase.removeChannel(window._guruRealtimeChannel);
-            } catch (eCh) {}
-            window._guruRealtimeChannel = null;
-          }
+          cleanupGuruRealtime();
 
           const schoolId = window.SicakapDB?.getActiveSchoolId();
-          const channelName = 'guru-live-monitor-' + (schoolId || 'global') + '-' + Date.now();
+          if (!schoolId) return;
+
+          const channelName = 'guru-live-' + schoolId;
           const channel = window.supabase.channel(channelName);
 
           channel
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_sessions' }, async (payload) => {
-              console.log('[Realtime] exam_sessions change:', payload);
+            .on('postgres_changes', {
+              event: '*',
+              schema: 'public',
+              table: 'exam_sessions',
+              filter: `school_id=eq.${schoolId}`
+            }, async (payload) => {
+              console.log('[Realtime] exam_sessions change for school:', schoolId);
               await updateLiveActiveExamCount();
               const monitoringView = document.getElementById('view-guru-monitoring');
               if (monitoringView && !monitoringView.classList.contains('hidden')) {
-                renderGuruMonitoring();
+                renderGuruMonitoring(false);
               }
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_results' }, async (payload) => {
-              console.log('[Realtime] exam_results change:', payload);
+            .on('postgres_changes', {
+              event: '*',
+              schema: 'public',
+              table: 'exam_results',
+              filter: `school_id=eq.${schoolId}`
+            }, async (payload) => {
+              console.log('[Realtime] exam_results change for school:', schoolId);
               await updateLiveActiveExamCount();
               const monitoringView = document.getElementById('view-guru-monitoring');
               if (monitoringView && !monitoringView.classList.contains('hidden')) {
-                renderGuruMonitoring();
+                renderGuruMonitoring(false);
               }
             })
             .subscribe((status) => {
-              console.log('[Realtime] Live Monitor subscription status:', status);
+              console.log('[Realtime] Subscription status for school:', schoolId, status);
             });
           
           window._guruRealtimeChannel = channel;
