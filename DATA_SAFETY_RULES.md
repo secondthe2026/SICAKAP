@@ -58,3 +58,4 @@ Dokumen ini adalah aturan permanen arsitektur data sistem SI-CAKAP CBT. Setiap m
    - Admin Sekolah (`school_id = get_my_school_id()`)
    - Guru / Proktor / Siswa sesuai hak akses kelasnya (`.agent/rules/rbac-sicakap.md`)
    - Superadmin approval isolation.
+
