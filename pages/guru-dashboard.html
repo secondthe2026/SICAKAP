@@ -2113,17 +2113,41 @@
 
     // Initialize Guru Data
     function initGuruData() {
-      SicakapDB.init();
-      resolveGuruAssignedClass();
-      renderGuruStats();
-      renderGuruRombelCards();
-      renderSiswaTable();
-      renderGuruJadwalTable();
-      renderMapelFilterTabs();
-      renderBankSoal();
-      renderGuruMonitoring();
-      populateGuruDropdowns();
-      renderGuruProfileHeader();
+      try {
+        SicakapDB.init();
+        resolveGuruAssignedClass();
+        renderGuruProfileHeader();
+        renderGuruStats();
+      } catch (errProfile) {
+        console.error('[initGuruData] Profile & Stats error:', errProfile);
+      }
+
+      try {
+        renderGuruRombelCards();
+      } catch (errRombel) {
+        console.error('[initGuruData] Rombel error:', errRombel);
+      }
+
+      try {
+        renderSiswaTable();
+      } catch (errSiswa) {
+        console.error('[initGuruData] Siswa table error:', errSiswa);
+      }
+
+      try {
+        renderGuruJadwalTable();
+        renderMapelFilterTabs();
+        renderBankSoal();
+        populateGuruDropdowns();
+      } catch (errJadwal) {
+        console.error('[initGuruData] Jadwal/Bank Soal error:', errJadwal);
+      }
+
+      try {
+        renderGuruMonitoring();
+      } catch (errMon) {
+        console.error('[initGuruData] Monitoring error:', errMon);
+      }
     }
 
     function renderGuruStats() {
@@ -2181,7 +2205,11 @@
       if (badgeJadwal) badgeJadwal.textContent = jadwals.length;
 
       // Update live counter murid sedang ujian langsung dari Supabase
-      updateLiveActiveExamCount();
+      try {
+        updateLiveActiveExamCount();
+      } catch (errLive) {
+        console.warn('[renderGuruStats] updateLiveActiveExamCount error:', errLive);
+      }
     }
 
     async function updateLiveActiveExamCount() {
@@ -2201,7 +2229,7 @@
         try {
           let query = window.supabase
             .from('exam_sessions')
-            .select('id, student_id, kelas, status, school_id, profiles(id, full_name, identifier, kelas, class_name)');
+            .select('id, student_id, kelas, status, school_id');
 
           if (schoolId) {
             query = query.eq('school_id', schoolId);
@@ -2209,13 +2237,15 @@
 
           const { data: sessions, error } = await query;
           if (!error && Array.isArray(sessions)) {
+            const allSiswas = SicakapDB.getSiswa() || [];
             const activeSessions = sessions.filter(sess => {
               const st = String(sess.status || '').toLowerCase().trim();
               if (!activeStatuses.includes(st)) return false;
 
               // Filter kelas rombel guru
               if (activeKelas) {
-                const sKelas = String(sess.kelas || sess.profiles?.kelas || sess.profiles?.class_name || '').toLowerCase().trim();
+                const matchedStudent = allSiswas.find(s => s.id === sess.student_id);
+                const sKelas = String(sess.kelas || matchedStudent?.kelas || matchedStudent?.class_name || '').toLowerCase().trim();
                 const numSess = sKelas.replace(/[^0-9]/g, '');
 
                 if (sKelas === activeKelas.toLowerCase()) return true;
@@ -2243,7 +2273,6 @@
       }).length;
       elActive.textContent = localActive;
       return localActive;
-    }
     }
 
     // ==============================================================
@@ -3780,8 +3809,24 @@
             .order('server_started_at', { ascending: false });
 
           if (schoolId) sQuery = sQuery.eq('school_id', schoolId);
-          const { data: sData, error: sErr } = await sQuery;
-          if (!sErr && Array.isArray(sData)) cloudSessions = sData;
+          let { data: sData, error: sErr } = await sQuery;
+
+          if (sErr || !Array.isArray(sData)) {
+            // Fallback: simple query without embedded joins if relations are unmapped
+            try {
+              let fbQuery = window.supabase
+                .from('exam_sessions')
+                .select('id, exam_id, school_id, student_id, kelas, status, device_token, violation_count, server_started_at, submitted_at')
+                .order('server_started_at', { ascending: false });
+              if (schoolId) fbQuery = fbQuery.eq('school_id', schoolId);
+              const { data: fbData } = await fbQuery;
+              if (Array.isArray(fbData)) cloudSessions = fbData;
+            } catch (fbErr) {
+              console.warn('[renderGuruMonitoring] Fallback sessions error:', fbErr);
+            }
+          } else {
+            cloudSessions = sData;
+          }
 
           // Query results
           let rQuery = window.supabase
@@ -5685,12 +5730,33 @@
 
     // Run on load
     window.addEventListener('DOMContentLoaded', () => {
-      initGuruData();
-      setupGuruRealtimeAndPolling();
-      if (window.SicakapDB) {
-        SicakapDB.renderPersistenceBar(document.getElementById('guru-persistence-bar'));
+      try {
+        initGuruData();
+      } catch (eInit) {
+        console.error('[DOMContentLoaded] initGuruData error:', eInit);
       }
-      lucide.createIcons();
+
+      try {
+        setupGuruRealtimeAndPolling();
+      } catch (eRt) {
+        console.warn('[DOMContentLoaded] setupGuruRealtimeAndPolling error:', eRt);
+      }
+
+      try {
+        if (window.SicakapDB && typeof SicakapDB.renderPersistenceBar === 'function') {
+          SicakapDB.renderPersistenceBar(document.getElementById('guru-persistence-bar'));
+        }
+      } catch (ePersist) {
+        console.warn('[DOMContentLoaded] renderPersistenceBar error:', ePersist);
+      }
+
+      try {
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
+      } catch (eLucide) {
+        console.warn('[DOMContentLoaded] lucide error:', eLucide);
+      }
     });
 
     // Auto-sync across tabs when modified anywhere
